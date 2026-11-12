@@ -1,0 +1,10 @@
+db-console:
+  data-sources:
+    - id: mysql-development
+      display-name: MySQL 开发库
+      environment: DEVELOPMENT
+      database-type: MYSQL
+      compatibility-mode: NATIVE
+      jdbc-url: jdbc:mysql://127.0.0.1:3306/db_console_example
+      username: db_console_example
+      credential-ref: DB_CONSOLE_MYSQL_DEVELOPMENT_PASSWORD
