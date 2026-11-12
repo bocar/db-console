@@ -10,12 +10,13 @@ const props = defineProps<{
   implicitCommit: boolean
 }>()
 
-const emit = defineEmits<{ confirm: [] }>()
+const emit = defineEmits<{ confirm: []; cancel: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 
 const open = () => dialog.value?.showModal()
 const onClose = () => {
   if (dialog.value?.returnValue === 'confirm') emit('confirm')
+  else emit('cancel')
   if (dialog.value) dialog.value.returnValue = ''
 }
 

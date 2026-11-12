@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Check, ChevronDown, CircleStop, Eraser, GitCommitHorizontal, History, LoaderCircle, Play, Plus, RotateCcw, Table2, X } from 'lucide-vue-next'
 import AppHeader from './AppHeader.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -7,8 +7,16 @@ import HistoryDialog from './HistoryDialog.vue'
 import ObjectExplorer from './ObjectExplorer.vue'
 import ResultPanel from './ResultPanel.vue'
 import SqlEditor from './SqlEditor.vue'
-import { dataSources, defaultSql, initialHistory, queryColumns, queryRows, tables } from '../data/mock'
-import type { HistoryEntry } from '../types'
+import { displayDatabaseType, displayEnvironment } from '../display'
+import { quoteIdentifier } from '../dialect'
+import { useDataSources } from '../composables/useDataSources'
+import { useExecution } from '../composables/useExecution'
+import { useManualTransaction } from '../composables/useManualTransaction'
+import { useObjectTree } from '../composables/useObjectTree'
+import { useResults } from '../composables/useResults'
+import { useSession } from '../composables/useSession'
+import { useSqlHistory } from '../composables/useSqlHistory'
+import { useToast } from '../composables/useToast'
 
 interface EditorHandle {
   executionText: () => string
@@ -20,227 +28,131 @@ interface ConfirmHandle { open: () => void }
 interface HistoryHandle { open: () => void }
 
 const emit = defineEmits<{ logout: [] }>()
-const selectedSourceId = ref('orders-prod')
-const selectedSource = computed(() => dataSources.find((source) => source.id === selectedSourceId.value) ?? dataSources[0])
-const selectedTableName = ref('orders')
-const selectedTable = computed(() => tables.find((table) => table.name === selectedTableName.value) ?? tables[0])
-const sql = ref(defaultSql)
+
+const { username } = useSession()
+const { notify, message: toastMessage } = useToast()
+const dataSources = useDataSources()
+const { sources, selectedSourceId, selectedSource, testing } = dataSources
+const objectTree = useObjectTree()
+const { tables, selectedTableName, selectedTable, loading: refreshing } = objectTree
+const results = useResults()
+const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elapsedMs, hasResult } = results
+const transaction = useManualTransaction()
+const historyStore = useSqlHistory()
+const { load: loadHistory, clear: clearHistoryFor } = historyStore
+const execution = useExecution({ dataSources, results, transaction })
+const { sql, isRunning, canceling, pendingSql, pendingConfirmation, execute, confirmExecution, cancelExecution, cancelQuery } = execution
+
 const editorRef = ref<EditorHandle | null>(null)
 const confirmDialog = ref<ConfirmHandle | null>(null)
 const historyDialog = ref<HistoryHandle | null>(null)
-const pendingSql = ref(defaultSql)
-const confirmTitle = ref('确认执行此操作？')
-const implicitCommit = ref(false)
-const isRunning = ref(false)
-const canceling = ref(false)
-const testing = ref(false)
-const refreshing = ref(false)
-const transactionPending = ref(true)
-const activeResultTab = ref<'result' | 'structure' | 'info'>('result')
-const hasResult = ref(true)
-const page = ref(1)
-const pageSize = ref(20)
-const elapsed = ref(86)
-const historyEntries = ref<HistoryEntry[]>(initialHistory.map((entry) => ({ ...entry })))
-const toast = ref('')
 const mobileSidebarOpen = ref(false)
 const editorSize = ref(43)
 const resizing = ref(false)
 const workbench = ref<HTMLElement | null>(null)
-const timers = new Set<number>()
-let runTimer: number | undefined
-let toastTimer: number | undefined
 
-const visibleRows = computed(() => {
-  if (!hasResult.value) return []
-  const start = (page.value - 1) * pageSize.value
-  return queryRows.slice(start, start + pageSize.value)
-})
-const visibleColumns = computed(() => hasResult.value ? queryColumns : [])
-const totalRows = computed(() => hasResult.value ? queryRows.length : 0)
-const currentHistory = computed(() => historyEntries.value.filter((entry) => entry.sourceId === selectedSourceId.value))
+const transactionPending = computed(() => (selectedSource.value ? transaction.isPending(selectedSource.value.id) : false))
+const currentHistory = computed(() => (selectedSource.value ? historyStore.currentFor(selectedSource.value.id) : []))
+const confirmTitle = computed(() =>
+  pendingConfirmation.value?.reason === 'PRODUCTION_WRITE' ? '确认在生产库执行？' : '确认执行此操作？')
+const confirmEnvironment = computed(() => (selectedSource.value ? displayEnvironment(selectedSource.value.environment) : ''))
+const confirmImplicitCommit = computed(() => pendingConfirmation.value?.implicitCommitDdl ?? false)
 const workbenchStyle = computed(() => ({ '--editor-size': `${editorSize.value}%` }))
 
-const schedule = (callback: () => void, delay: number) => {
-  const timer = window.setTimeout(() => {
-    timers.delete(timer)
-    callback()
-  }, delay)
-  timers.add(timer)
-  return timer
+async function loadWorkspaceForSource(): Promise<void> {
+  const source = selectedSource.value
+  if (!source) return
+  await Promise.all([objectTree.loadTables(source.id), loadHistory(source.id)])
 }
 
-const notify = (message: string) => {
-  toast.value = message
-  if (toastTimer !== undefined) {
-    window.clearTimeout(toastTimer)
-    timers.delete(toastTimer)
-  }
-  toastTimer = schedule(() => { toast.value = '' }, 2800)
+onMounted(async () => {
+  await dataSources.load()
+  await loadWorkspaceForSource()
+})
+
+watch(selectedSourceId, () => {
+  void loadWorkspaceForSource()
+})
+
+watch(pendingConfirmation, (confirmation) => {
+  if (confirmation) confirmDialog.value?.open()
+})
+
+const executeFromToolbar = () => {
+  void execute(editorRef.value?.executionText() ?? sql.value)
 }
 
-const execute = (text: string) => {
-  const statement = text.trim()
-  if (!statement) {
-    notify('请输入一条 SQL 语句后再执行。')
-    return
-  }
-  if (isRunning.value) return
-  const isDdl = /^(create|alter|drop|comment)\b/i.test(statement)
-  const isWrite = /^(insert|update|delete)\b/i.test(statement)
-  if (isDdl && transactionPending.value) {
-    notify('请先提交或回滚当前事务，再执行隐式提交 DDL。')
-    return
-  }
-  const missingWhere = /^(update|delete)\b/i.test(statement) && !/\bwhere\b/i.test(statement)
-  const needsConfirmation = isDdl || (selectedSource.value.environment === '生产' && isWrite) || missingWhere
-  pendingSql.value = statement
-  if (needsConfirmation) {
-    implicitCommit.value = isDdl
-    confirmTitle.value = selectedSource.value.environment === '生产' ? '确认在生产库执行？' : '确认执行此操作？'
-    confirmDialog.value?.open()
-    return
-  }
-  runStatement()
-}
-
-const runStatement = () => {
-  const statement = pendingSql.value.trim()
-  const isWrite = /^(insert|update|delete)\b/i.test(statement)
-  const isDdl = /^(create|alter|drop|comment)\b/i.test(statement)
-  const isDescribe = /^(desc|describe)\b/i.test(statement)
-  isRunning.value = true
-  canceling.value = false
-  runTimer = schedule(() => {
-    isRunning.value = false
-    runTimer = undefined
-    elapsed.value = statement.length % 70 + 34
-    const entry: HistoryEntry = {
-      id: Date.now(),
-      sourceId: selectedSourceId.value,
-      sql: statement,
-      time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-      duration: `${elapsed.value} ms`,
-      status: isWrite ? '未提交' : '成功',
-    }
-    historyEntries.value.unshift(entry)
-    if (isWrite) {
-      transactionPending.value = true
-      hasResult.value = false
-      activeResultTab.value = 'info'
-      notify('执行成功，变更尚未提交。')
-    } else if (isDdl) {
-      hasResult.value = false
-      activeResultTab.value = 'info'
-      notify('DDL 已在独立连接执行并生效。')
-    } else if (isDescribe) {
-      const tableName = statement.replace(/^(desc|describe)\s+/i, '').replace(/[`"';]/g, '').split('.').pop()
-      selectedTableName.value = tables.some((table) => table.name === tableName) ? tableName ?? 'orders' : 'orders'
-      activeResultTab.value = 'structure'
-      notify('表结构已更新。')
-    } else {
-      hasResult.value = true
-      page.value = 1
-      activeResultTab.value = 'result'
-      notify('查询已完成，结果已更新。')
-    }
-  }, 850)
-}
-
-const executeFromToolbar = () => execute(editorRef.value?.executionText() ?? sql.value)
-
-const cancelQuery = () => {
-  if (!isRunning.value || canceling.value) return
-  canceling.value = true
-  if (runTimer !== undefined) {
-    window.clearTimeout(runTimer)
-    timers.delete(runTimer)
-    runTimer = undefined
-  }
-  schedule(() => {
-    isRunning.value = false
-    canceling.value = false
-    activeResultTab.value = 'info'
-    notify('查询已取消，未自动重试。')
-  }, 500)
+const onConfirm = () => {
+  void confirmExecution()
 }
 
 const commitTransaction = () => {
-  transactionPending.value = false
-  historyEntries.value.forEach((entry) => {
-    if (entry.sourceId === selectedSourceId.value && entry.status === '未提交') entry.status = '成功'
-  })
-  notify('事务已提交，所有变更已生效。')
+  const source = selectedSource.value
+  if (source) void transaction.commit(source.id)
 }
 
 const rollbackTransaction = () => {
-  transactionPending.value = false
-  historyEntries.value.forEach((entry) => {
-    if (entry.sourceId === selectedSourceId.value && entry.status === '未提交') entry.status = '成功'
-  })
-  notify('事务已回滚，未提交变更已撤销。')
+  const source = selectedSource.value
+  if (source) void transaction.rollback(source.id)
 }
 
 const changeSource = (id: string) => {
-  if (id === selectedSourceId.value) return
-  if (transactionPending.value) {
+  const current = selectedSource.value
+  if (!current || id === current.id) return
+  if (transaction.isPending(current.id)) {
     notify('当前有未提交事务，请先提交或回滚再切换数据源。')
     return
   }
-  selectedSourceId.value = id
-  selectedTableName.value = 'orders'
-  hasResult.value = false
-  activeResultTab.value = 'result'
-  page.value = 1
+  dataSources.selectSource(id)
+  results.reset()
   mobileSidebarOpen.value = false
-  notify(`已切换到${selectedSource.value.name}，旧结果已清除。`)
+  notify('已切换数据源，旧对象与旧结果已清除。')
 }
 
 const testConnection = () => {
-  testing.value = true
-  schedule(() => {
-    testing.value = false
-    notify(`${selectedSource.value.name}连接正常，认证成功。`)
-  }, 700)
+  void dataSources.testConnection()
 }
 
 const refreshObjects = () => {
-  refreshing.value = true
-  schedule(() => {
-    refreshing.value = false
-    notify('对象树已刷新。')
-  }, 650)
+  const source = selectedSource.value
+  if (!source) return
+  void objectTree.loadTables(source.id).then(() => notify('对象树已刷新。'))
 }
 
 const selectTable = (name: string) => {
-  selectedTableName.value = name
-  activeResultTab.value = 'structure'
+  objectTree.selectTable(name)
+  activeTab.value = 'structure'
   mobileSidebarOpen.value = false
 }
 
-const quoteIdentifier = (name: string) => selectedSource.value.type === 'DM8' ? `"${name}"` : `\`${name}\``
-const insertObject = (name: string) => editorRef.value?.insertText(quoteIdentifier(name))
+const insertObject = (name: string) => {
+  const source = selectedSource.value
+  if (source) editorRef.value?.insertText(quoteIdentifier(name, source))
+}
+
 const openTable = (name: string) => {
-  selectedTableName.value = name
-  sql.value = `SELECT *\nFROM ${quoteIdentifier(name)}\nLIMIT 100;`
+  const source = selectedSource.value
+  if (!source) return
+  objectTree.selectTable(name)
+  sql.value = `SELECT *\nFROM ${quoteIdentifier(name, source)}\nLIMIT 100;`
   nextTick(() => editorRef.value?.focusEditor())
 }
 
-const loadHistory = (value: string) => {
+const loadHistoryEntry = (value: string) => {
   sql.value = value
   nextTick(() => editorRef.value?.focusEditor())
   notify('历史语句已载入编辑器，尚未执行。')
 }
 
 const clearHistory = () => {
-  historyEntries.value = historyEntries.value.filter((entry) => entry.sourceId !== selectedSourceId.value)
-  notify('当前数据源的会话历史已清空。')
+  const source = selectedSource.value
+  if (!source) return
+  void clearHistoryFor(source.id).then(() => notify('当前数据源的会话历史已清空。'))
 }
 
 const newQuery = () => {
   sql.value = ''
-  hasResult.value = false
-  activeResultTab.value = 'result'
+  results.reset()
   nextTick(() => editorRef.value?.focusEditor())
 }
 
@@ -250,8 +162,7 @@ const clearEditor = () => {
 }
 
 const changePageSize = (size: number) => {
-  pageSize.value = size
-  page.value = 1
+  results.changePageSize(size)
 }
 
 const startResize = (event: PointerEvent) => {
@@ -274,15 +185,21 @@ const resizeWithKeyboard = (event: KeyboardEvent) => {
 }
 
 onUnmounted(() => {
-  timers.forEach((timer) => window.clearTimeout(timer))
+  dataSources.reset()
+  objectTree.reset()
+  results.reset()
+  transaction.reset()
+  historyStore.reset()
+  execution.reset()
 })
 </script>
 
 <template>
   <div class="workspace-shell">
     <AppHeader
-      :sources="dataSources"
+      :sources="sources"
       :selected-source-id="selectedSourceId"
+      :username="username ?? ''"
       :testing="testing"
       @change-source="changeSource"
       @test-connection="testConnection"
@@ -294,7 +211,7 @@ onUnmounted(() => {
       <ObjectExplorer
         :tables="tables"
         :selected-table="selectedTableName"
-        :schema="selectedSource.currentSchema"
+        :schema="selectedSource?.displayName ?? ''"
         :refreshing="refreshing"
         :mobile-open="mobileSidebarOpen"
         @select="selectTable"
@@ -309,7 +226,7 @@ onUnmounted(() => {
             <div class="query-tabs" role="tablist" aria-label="查询标签页">
               <div class="query-tab active" role="tab" aria-selected="true">
                 <span class="query-tab-title">查询 1</span>
-                <span class="query-source mono">{{ selectedSource.database }}</span>
+                <span class="query-source mono">{{ selectedSource ? displayDatabaseType(selectedSource.databaseType) : '' }}</span>
                 <button type="button" class="query-close" aria-label="关闭查询 1" @click="newQuery"><X :size="13" /></button>
               </div>
               <button type="button" class="icon-button add-query" title="新建查询" aria-label="新建查询" @click="newQuery"><Plus :size="16" /></button>
@@ -338,7 +255,7 @@ onUnmounted(() => {
             <GitCommitHorizontal :size="16" />
             <span class="transaction-mode">手动事务</span>
             <span class="transaction-state"><span class="transaction-dot"></span>{{ transactionPending ? '有变更未提交' : '无未提交变更' }}</span>
-            <span class="transaction-context">当前会话 · {{ selectedSource.name }}</span>
+            <span class="transaction-context">当前会话 · {{ selectedSource?.displayName ?? '' }}</span>
             <div class="transaction-actions">
               <button type="button" class="button" :disabled="!transactionPending" @click="rollbackTransaction"><RotateCcw :size="13" />回滚</button>
               <button type="button" class="button commit-button" :disabled="!transactionPending" @click="commitTransaction"><Check :size="13" />提交 Commit</button>
@@ -364,16 +281,16 @@ onUnmounted(() => {
         <ResultPanel
           :columns="visibleColumns"
           :rows="visibleRows"
-          :selected-table="selectedTable"
+          :selected-table="selectedTable ?? undefined"
           :page="page"
           :page-size="pageSize"
           :total-rows="totalRows"
-          :elapsed="elapsed"
-          :active-tab="activeResultTab"
+          :elapsed="elapsedMs"
+          :active-tab="activeTab"
           :transaction-pending="transactionPending"
-          :source-name="selectedSource.name"
+          :source-name="selectedSource?.displayName ?? ''"
           :has-result="hasResult"
-          @tab-change="activeResultTab = $event"
+          @tab-change="activeTab = $event"
           @page-change="page = $event"
           @page-size-change="changePageSize"
           @notify="notify"
@@ -382,23 +299,24 @@ onUnmounted(() => {
     </div>
     <footer class="status-bar">
       <span class="status-connected"><span></span>已连接</span>
-      <span>{{ selectedSource.type }}</span>
+      <span>{{ selectedSource ? displayDatabaseType(selectedSource.databaseType) : '' }}</span>
       <span class="status-schema"><Table2 :size="11" />{{ selectedTableName }}</span>
       <span class="status-right">UTF-8</span>
       <span>SQL</span>
-      <span>数据库分页</span>
+      <span>结果视图分页</span>
     </footer>
     <ConfirmDialog
       ref="confirmDialog"
       :title="confirmTitle"
       :sql="pendingSql"
-      :source-name="selectedSource.name"
-      :environment="selectedSource.environment"
-      :implicit-commit="implicitCommit"
-      @confirm="runStatement"
+      :source-name="selectedSource?.displayName ?? ''"
+      :environment="confirmEnvironment"
+      :implicit-commit="confirmImplicitCommit"
+      @confirm="onConfirm"
+      @cancel="cancelExecution"
     />
-    <HistoryDialog ref="historyDialog" :entries="currentHistory" :source-name="selectedSource.name" @load="loadHistory" @clear="clearHistory" />
-    <div v-if="toast" class="toast-message" role="status"><Check :size="16" />{{ toast }}</div>
+    <HistoryDialog ref="historyDialog" :entries="currentHistory" :source-name="selectedSource?.displayName ?? ''" @load="loadHistoryEntry" @clear="clearHistory" />
+    <div v-if="toastMessage" class="toast-message" role="status"><Check :size="16" />{{ toastMessage }}</div>
   </div>
 </template>
 

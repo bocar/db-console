@@ -1,25 +1,24 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ArrowRight, Check, Database, Eye, EyeOff, KeyRound, UserRound } from 'lucide-vue-next'
+import { useSession } from '../composables/useSession'
 
-const emit = defineEmits<{ login: [] }>()
-const username = ref('admin')
-const password = ref('db-console')
+const { loggingIn, login, loginError } = useSession()
+const username = ref('')
+const password = ref('')
 const showPassword = ref(false)
-const loading = ref(false)
 const error = ref('')
 
-const login = () => {
+const submit = async () => {
   error.value = ''
   if (!username.value.trim() || !password.value) {
     error.value = '请输入用户名和密码。'
     return
   }
-  loading.value = true
-  window.setTimeout(() => {
-    loading.value = false
-    emit('login')
-  }, 450)
+  const succeeded = await login(username.value.trim(), password.value)
+  if (!succeeded) {
+    error.value = loginError.value || '登录失败，请稍后重试。'
+  }
 }
 </script>
 
@@ -72,7 +71,7 @@ const login = () => {
         <p class="login-overline">欢迎回来</p>
         <h2 id="login-title">登录工作台</h2>
         <p class="login-description">使用部署配置中的应用账号登录。</p>
-        <form class="login-form" method="post" action="#workspace" @submit.prevent="login">
+        <form class="login-form" method="post" action="#workspace" @submit.prevent="submit">
           <div class="form-field">
             <label for="username">用户名</label>
             <div class="input-shell">
@@ -92,15 +91,11 @@ const login = () => {
             </div>
           </div>
           <p v-if="error" id="login-error" class="login-error" role="alert">{{ error }}</p>
-          <button class="login-submit" type="submit" :disabled="loading">
-            {{ loading ? '正在登录…' : '登录工作台' }}
-            <ArrowRight v-if="!loading" :size="18" />
+          <button class="login-submit" type="submit" :disabled="loggingIn">
+            {{ loggingIn ? '正在登录…' : '登录工作台' }}
+            <ArrowRight v-if="!loggingIn" :size="18" />
           </button>
         </form>
-        <div class="prototype-note">
-          <span>界面原型</span>
-          已填入演示账号，可直接登录。
-        </div>
         <p class="security-note">数据库密码由服务端环境变量注入，<br />不会在浏览器中配置或展示。</p>
       </div>
     </section>

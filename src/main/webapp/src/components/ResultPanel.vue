@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Check, ChevronLeft, ChevronRight, Clipboard, Code2, Download, Info, KeyRound, Table2 } from 'lucide-vue-next'
 import type { QueryColumn, QueryRow, QueryValue, TableDefinition } from '../types'
+import { displayQueryValue } from '../display'
 
 const props = defineProps<{
   columns: QueryColumn[]
@@ -39,7 +40,7 @@ const toggleRow = (index: number) => {
   else selectedRows.value.add(index)
 }
 
-const displayValue = (value: QueryValue) => value === null ? 'NULL' : value === '' ? '空字符串' : value
+const displayValue = (value: QueryValue) => displayQueryValue(value)
 const statusClass = (value: QueryValue) => {
   if (value === 'PAID' || value === 'SHIPPED') return 'value-success'
   if (value === 'PENDING') return 'value-pending'
@@ -52,11 +53,11 @@ const copySelection = async () => {
   if (selectedRows.value.size > 0) {
     text = [...selectedRows.value]
       .sort((a, b) => a - b)
-      .map((index) => props.rows[index].map((value) => value ?? 'NULL').join('\t'))
+      .map((index) => props.rows[index].map((value) => displayQueryValue(value)).join('\t'))
       .join('\n')
   } else if (selectedCell.value) {
     const { row, column } = selectedCell.value
-    text = props.rows[row]?.[column] ?? 'NULL'
+    text = props.rows[row] ? displayQueryValue(props.rows[row][column]) : ''
   }
   if (!text) return
   try {
@@ -68,7 +69,7 @@ const copySelection = async () => {
 }
 
 const csvValue = (value: QueryValue) => {
-  const text = value ?? ''
+  const text = value === null ? '' : String(value)
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
@@ -141,7 +142,7 @@ const changePage = (event: Event) => {
                 <input type="checkbox" :checked="selectedRows.has(rowIndex)" :aria-label="`选择第 ${(page - 1) * pageSize + rowIndex + 1} 行`" @change="toggleRow(rowIndex)" />
                 <span class="mono">{{ (page - 1) * pageSize + rowIndex + 1 }}</span>
               </th>
-              <td v-for="(value, columnIndex) in row" :key="`${rowIndex}-${columnIndex}`" :class="{ 'cell-selected': selectedCell?.row === rowIndex && selectedCell.column === columnIndex }" :data-label="columns[columnIndex].name" :title="value ?? 'SQL NULL'" @click="selectedCell = { row: rowIndex, column: columnIndex }">
+              <td v-for="(value, columnIndex) in row" :key="`${rowIndex}-${columnIndex}`" :class="{ 'cell-selected': selectedCell?.row === rowIndex && selectedCell.column === columnIndex }" :data-label="columns[columnIndex].name" :title="displayValue(value)" @click="selectedCell = { row: rowIndex, column: columnIndex }">
                 <span v-if="value === null" class="null-value mono">NULL</span>
                 <span v-else-if="value === ''" class="empty-value">空字符串</span>
                 <span v-else-if="columns[columnIndex].name === 'status'" class="status-value" :class="statusClass(value)">{{ value }}</span>

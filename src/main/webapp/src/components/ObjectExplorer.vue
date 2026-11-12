@@ -71,7 +71,7 @@ const refresh = () => {
         </button>
         <Database :size="15" class="database-icon" />
         <span class="mono">{{ schema }}</span>
-        <span class="current-label">当前库</span>
+        <span class="current-label">当前数据源</span>
       </div>
       <div v-if="rootExpanded" id="database-objects" class="database-objects">
         <div class="object-group-label"><span>表</span><span>{{ filteredTables.length }}</span></div>

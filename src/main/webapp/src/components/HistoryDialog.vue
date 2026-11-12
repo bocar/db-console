@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Clock3, History, Search, Trash2, X } from 'lucide-vue-next'
 import type { HistoryEntry } from '../types'
+import { displayHistoryStatus, formatClockTime, formatDuration } from '../display'
 
 const props = defineProps<{ entries: HistoryEntry[]; sourceName: string }>()
 const emit = defineEmits<{ load: [sql: string]; clear: [] }>()
@@ -39,9 +40,9 @@ defineExpose({ open })
     <div class="history-list">
       <article v-for="entry in filteredEntries" :key="entry.id" class="history-entry">
         <div class="history-meta">
-          <span><Clock3 :size="12" />{{ entry.time }}</span>
-          <span>{{ entry.duration }}</span>
-          <span class="history-status" :class="{ pending: entry.status === '未提交', failed: entry.status === '失败' }">{{ entry.status }}</span>
+          <span><Clock3 :size="12" />{{ formatClockTime(entry.executedAt) }}</span>
+          <span>{{ formatDuration(entry.durationMs) }}</span>
+          <span class="history-status" :class="{ pending: entry.uncommitted, failed: entry.status === 'FAILED' }">{{ displayHistoryStatus(entry) }}</span>
         </div>
         <pre class="mono">{{ entry.sql }}</pre>
         <button type="button" class="load-history" @click="load(entry.sql)">载入编辑器</button>

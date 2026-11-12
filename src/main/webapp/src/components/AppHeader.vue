@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Check, ChevronDown, Database, LogOut, Menu, PlugZap, Server } from 'lucide-vue-next'
-import type { DataSource } from '../types'
+import type { DataSourceInfo } from '../types'
+import { displayDatabaseType, displayEnvironment, environmentClass as envClass } from '../display'
 
 const props = defineProps<{
-  sources: DataSource[]
+  sources: DataSourceInfo[]
   selectedSourceId: string
+  username: string
   testing: boolean
 }>()
 
@@ -17,11 +19,10 @@ const emit = defineEmits<{
 }>()
 
 const selectedSource = computed(() => props.sources.find((source) => source.id === props.selectedSourceId) ?? props.sources[0])
-const environmentClass = computed(() => {
-  if (selectedSource.value.environment === '生产') return 'badge-production'
-  if (selectedSource.value.environment === '测试') return 'badge-testing'
-  return 'badge-development'
-})
+const environmentLabel = computed(() => (selectedSource.value ? displayEnvironment(selectedSource.value.environment) : ''))
+const environmentClass = computed(() => (selectedSource.value ? envClass(selectedSource.value.environment) : ''))
+const databaseTypeLabel = computed(() => (selectedSource.value ? displayDatabaseType(selectedSource.value.databaseType) : ''))
+const initials = computed(() => (props.username ? props.username.slice(0, 2).toUpperCase() : '··'))
 
 const changeSource = (event: Event) => {
   const select = event.target as HTMLSelectElement
@@ -42,9 +43,8 @@ const changeSource = (event: Event) => {
         <button type="button" class="nav-item active" aria-current="page">SQL 工作台</button>
       </nav>
       <div class="app-actions">
-        <span class="preview-label">设计预览</span>
-        <span class="user-avatar" aria-hidden="true">AD</span>
-        <span class="user-name">admin</span>
+        <span class="user-avatar" aria-hidden="true">{{ initials }}</span>
+        <span class="user-name">{{ username }}</span>
         <button type="button" class="logout-button" title="退出登录" @click="emit('logout')">
           <LogOut :size="16" />
           <span>退出</span>
@@ -57,15 +57,12 @@ const changeSource = (event: Event) => {
       <label for="datasource-select" class="source-label">数据源</label>
       <div class="source-select-wrap">
         <select id="datasource-select" :value="selectedSourceId" name="datasource" @change="changeSource">
-          <option v-for="source in sources" :key="source.id" :value="source.id">{{ source.name }}</option>
+          <option v-for="source in sources" :key="source.id" :value="source.id">{{ source.displayName }}</option>
         </select>
         <ChevronDown :size="14" aria-hidden="true" />
       </div>
-      <span class="badge" :class="environmentClass">{{ selectedSource.environment }}</span>
-      <span class="source-type">{{ selectedSource.type }}</span>
-      <span class="source-divider"></span>
-      <Database :size="14" class="source-icon" aria-hidden="true" />
-      <span class="schema-name mono">{{ selectedSource.currentSchema }}</span>
+      <span class="badge" :class="environmentClass">{{ environmentLabel }}</span>
+      <span class="source-type">{{ databaseTypeLabel }}</span>
       <div class="connection-actions">
         <span class="connection-status"><span class="connection-dot"></span>连接正常</span>
         <button type="button" class="button test-button" :disabled="testing" @click="emit('testConnection')">

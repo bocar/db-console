@@ -1,23 +1,32 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import LoginPage from './components/LoginPage.vue'
 import WorkspacePage from './components/WorkspacePage.vue'
+import { HttpApiClient } from './api/http-client'
+import { provideApiClient } from './api/client'
+import { useSession } from './composables/useSession'
 
-const currentHash = ref(window.location.hash)
-const showLogin = computed(() => currentHash.value === '#login')
-const syncRoute = () => {
-  currentHash.value = window.location.hash
-}
+const client = new HttpApiClient()
+provideApiClient(client)
+const { status, refresh, logout, expire } = useSession(client)
+client.onSessionExpired(expire)
 
-const navigate = (page: 'login' | 'workspace') => {
-  window.location.hash = page
-}
-
-onMounted(() => window.addEventListener('hashchange', syncRoute))
-onUnmounted(() => window.removeEventListener('hashchange', syncRoute))
+onMounted(() => {
+  void refresh()
+})
 </script>
 
 <template>
-  <LoginPage v-if="showLogin" @login="navigate('workspace')" />
-  <WorkspacePage v-else @logout="navigate('login')" />
+  <div v-if="status === 'unknown'" class="app-boot">正在检查登录状态…</div>
+  <LoginPage v-else-if="status === 'anonymous'" />
+  <WorkspacePage v-else @logout="logout" />
 </template>
+
+<style scoped>
+.app-boot {
+  min-block-size: 100dvh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+</style>
