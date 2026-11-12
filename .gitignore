@@ -11,3 +11,6 @@ src/main/webapp/node/
 # local runtime config with real credentials (passwords live in env vars)
 config/local/
 .claude/settings.local.json
+
+# local playwright artifacts
+.playwright-mcp/
