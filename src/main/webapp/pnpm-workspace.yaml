@@ -1,4 +1,5 @@
 allowBuilds:
   esbuild: true
 overrides:
+  # vitest 4 / jsdom 31 传递依赖 undici 8.12.x，在锁定的 node 22 线上模块加载即崩；8.11.1 是可用的最新线
   undici: 8.11.1

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +15,14 @@ import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
 class DbConsolePropertiesTest {
+
+  private static final Duration EXECUTION_TIMEOUT = Duration.ofSeconds(30);
+  private static final int MAX_SQL_LENGTH = 20000;
+  private static final int MAX_CONCURRENCY = 4;
+  private static final int DEFAULT_PAGE_SIZE = 100;
+  private static final int MAX_PAGE_SIZE = 1000;
+  private static final long MAX_CELL_BYTES = 65536;
+  private static final long MAX_RESULT_BYTES = 10485760;
 
   @Test
   @DisplayName("外部配置键按 kebab-case 绑定到不可变配置模型并解析枚举")
@@ -29,13 +36,13 @@ class DbConsolePropertiesTest {
     assertThat(properties.login().username()).isEqualTo("admin");
     assertThat(properties.login().password()).isEqualTo("app-secret");
     assertThat(properties.session().timeout()).isEqualTo(Duration.ofHours(8));
-    assertThat(properties.execution().timeout()).isEqualTo(Duration.ofSeconds(30));
-    assertThat(properties.execution().maxSqlLength()).isEqualTo(20000);
-    assertThat(properties.execution().maxConcurrency()).isEqualTo(4);
-    assertThat(properties.execution().defaultPageSize()).isEqualTo(100);
-    assertThat(properties.execution().maxPageSize()).isEqualTo(1000);
-    assertThat(properties.execution().maxCellBytes()).isEqualTo(65536);
-    assertThat(properties.execution().maxResultBytes()).isEqualTo(10485760);
+    assertThat(properties.execution().timeout()).isEqualTo(EXECUTION_TIMEOUT);
+    assertThat(properties.execution().maxSqlLength()).isEqualTo(MAX_SQL_LENGTH);
+    assertThat(properties.execution().maxConcurrency()).isEqualTo(MAX_CONCURRENCY);
+    assertThat(properties.execution().defaultPageSize()).isEqualTo(DEFAULT_PAGE_SIZE);
+    assertThat(properties.execution().maxPageSize()).isEqualTo(MAX_PAGE_SIZE);
+    assertThat(properties.execution().maxCellBytes()).isEqualTo(MAX_CELL_BYTES);
+    assertThat(properties.execution().maxResultBytes()).isEqualTo(MAX_RESULT_BYTES);
     assertThat(properties.transaction().idleTimeout()).isEqualTo(Duration.ofMinutes(10));
     assertThat(properties.audit().directory()).isEqualTo("./audit");
     assertThat(properties.audit().retention()).isEqualTo(Duration.ofDays(30));
@@ -89,28 +96,13 @@ class DbConsolePropertiesTest {
   @Test
   @DisplayName("空白的凭据引用违反校验约束")
   void rejectsBlankCredentialRef() {
-    Validator validator =
-        Validation.buildDefaultValidatorFactory().getValidator();
+    try (var factory = Validation.buildDefaultValidatorFactory()) {
+      var invalid = withCredentialRef(dataSource("mysql-work-note"), " ");
 
-    var violations =
-        validator.validateProperty(dataSource("mysql-work-note"), "credentialRef");
+      var violations = factory.getValidator().validateProperty(invalid, "credentialRef");
 
-    assertThat(violations).isEmpty();
-    var blank = dataSource("mysql-work-note");
-    var invalid =
-        new DbConsoleProperties.DataSourceProperties(
-            blank.id(),
-            blank.displayName(),
-            blank.environment(),
-            blank.databaseType(),
-            blank.compatibilityMode(),
-            blank.jdbcUrl(),
-            blank.username(),
-            " ");
-
-    var blankViolations = validator.validateProperty(invalid, "credentialRef");
-
-    assertThat(blankViolations).isNotEmpty();
+      assertThat(violations).isNotEmpty();
+    }
   }
 
   private static Map<String, String> validSource() {
@@ -119,12 +111,12 @@ class DbConsolePropertiesTest {
     source.put("db-console.login.password", "app-secret");
     source.put("db-console.session.timeout", "PT8H");
     source.put("db-console.execution.timeout", "PT30S");
-    source.put("db-console.execution.max-sql-length", "20000");
-    source.put("db-console.execution.max-concurrency", "4");
-    source.put("db-console.execution.default-page-size", "100");
-    source.put("db-console.execution.max-page-size", "1000");
-    source.put("db-console.execution.max-cell-bytes", "65536");
-    source.put("db-console.execution.max-result-bytes", "10485760");
+    source.put("db-console.execution.max-sql-length", String.valueOf(MAX_SQL_LENGTH));
+    source.put("db-console.execution.max-concurrency", String.valueOf(MAX_CONCURRENCY));
+    source.put("db-console.execution.default-page-size", String.valueOf(DEFAULT_PAGE_SIZE));
+    source.put("db-console.execution.max-page-size", String.valueOf(MAX_PAGE_SIZE));
+    source.put("db-console.execution.max-cell-bytes", String.valueOf(MAX_CELL_BYTES));
+    source.put("db-console.execution.max-result-bytes", String.valueOf(MAX_RESULT_BYTES));
     source.put("db-console.transaction.idle-timeout", "PT10M");
     source.put("db-console.audit.directory", "./audit");
     source.put("db-console.audit.retention", "P30D");
@@ -151,13 +143,32 @@ class DbConsolePropertiesTest {
         "DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD");
   }
 
+  private static DbConsoleProperties.DataSourceProperties withCredentialRef(
+      DbConsoleProperties.DataSourceProperties source, String credentialRef) {
+    return new DbConsoleProperties.DataSourceProperties(
+        source.id(),
+        source.displayName(),
+        source.environment(),
+        source.databaseType(),
+        source.compatibilityMode(),
+        source.jdbcUrl(),
+        source.username(),
+        credentialRef);
+  }
+
   private static DbConsoleProperties.LoginProperties login() {
     return new DbConsoleProperties.LoginProperties("admin", "app-secret");
   }
 
   private static DbConsoleProperties.ExecutionProperties execution() {
     return new DbConsoleProperties.ExecutionProperties(
-        Duration.ofSeconds(30), 20000, 4, 100, 1000, 65536, 10485760);
+        EXECUTION_TIMEOUT,
+        MAX_SQL_LENGTH,
+        MAX_CONCURRENCY,
+        DEFAULT_PAGE_SIZE,
+        MAX_PAGE_SIZE,
+        MAX_CELL_BYTES,
+        MAX_RESULT_BYTES);
   }
 
   private static DbConsoleProperties.AuditProperties audit() {

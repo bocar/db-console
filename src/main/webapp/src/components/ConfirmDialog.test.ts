@@ -53,4 +53,12 @@ describe('ConfirmDialog', () => {
 
     expect(wrapper.emitted('confirm')).toBeUndefined()
   })
+
+  it('routes confirm and cancel through dialog form submit button values', () => {
+    const wrapper = mountDialog()
+    const submitValues = wrapper.findAll('button[type="submit"]').map((b) => b.attributes('value'))
+
+    expect(submitValues).toContain('confirm')
+    expect(submitValues).toContain('cancel')
+  })
 })
