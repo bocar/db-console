@@ -20,7 +20,8 @@
   <properties>
     <java.version>17</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <node.version>v22.14.0</node.version>
+    <!-- node 22 LTS 最新线：满足 jsdom 31 / undici 声明的 engines 下限 -->
+    <node.version>v22.23.5</node.version>
     <pnpm.version>11.24.0</pnpm.version>
   </properties>
 
@@ -42,6 +43,7 @@
       <artifactId>spring-boot-configuration-processor</artifactId>
       <optional>true</optional>
     </dependency>
+    <!-- 8.0.x 驱动线与本地验收服务器 MySQL 8.0.28 匹配，不随 Boot BOM 升到 9.x -->
     <dependency>
       <groupId>com.mysql</groupId>
       <artifactId>mysql-connector-j</artifactId>
