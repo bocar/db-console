@@ -25,7 +25,7 @@ export function displayEnvironment(environment: Environment): string {
   return ENVIRONMENT_TEXT[environment]
 }
 
-export function environmentClass(environment: Environment): string {
+export function environmentBadgeClass(environment: Environment): string {
   return ENVIRONMENT_CLASS[environment]
 }
 

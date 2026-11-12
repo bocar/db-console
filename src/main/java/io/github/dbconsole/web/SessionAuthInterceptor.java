@@ -16,6 +16,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 /** 受保护接口的登录会话校验：无有效会话一律 401。 */
 public final class SessionAuthInterceptor implements HandlerInterceptor {
 
+  /** 认证通过后写入请求属性的登录账号名。 */
+  public static final String USERNAME_ATTRIBUTE = "auth.username";
+
   private final SessionService sessions;
   private final ObjectMapper objectMapper;
 
@@ -30,7 +33,7 @@ public final class SessionAuthInterceptor implements HandlerInterceptor {
       throws IOException {
     Optional<String> username = sessions.authenticate(sessionToken(request));
     if (username.isPresent()) {
-      request.setAttribute(AuthController.USERNAME_ATTRIBUTE, username.get());
+      request.setAttribute(USERNAME_ATTRIBUTE, username.get());
       return true;
     }
     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

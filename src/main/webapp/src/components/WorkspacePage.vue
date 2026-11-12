@@ -211,7 +211,7 @@ onUnmounted(() => {
       <ObjectExplorer
         :tables="tables"
         :selected-table="selectedTableName"
-        :schema="selectedSource?.displayName ?? ''"
+        :source-label="selectedSource?.displayName ?? ''"
         :refreshing="refreshing"
         :mobile-open="mobileSidebarOpen"
         @select="selectTable"

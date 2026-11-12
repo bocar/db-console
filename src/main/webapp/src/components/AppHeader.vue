@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { Check, ChevronDown, Database, LogOut, Menu, PlugZap, Server } from 'lucide-vue-next'
 import type { DataSourceInfo } from '../types'
-import { displayDatabaseType, displayEnvironment, environmentClass as envClass } from '../display'
+import { displayDatabaseType, displayEnvironment, environmentBadgeClass } from '../display'
 
 const props = defineProps<{
   sources: DataSourceInfo[]
@@ -20,7 +20,7 @@ const emit = defineEmits<{
 
 const selectedSource = computed(() => props.sources.find((source) => source.id === props.selectedSourceId) ?? props.sources[0])
 const environmentLabel = computed(() => (selectedSource.value ? displayEnvironment(selectedSource.value.environment) : ''))
-const environmentClass = computed(() => (selectedSource.value ? envClass(selectedSource.value.environment) : ''))
+const environmentBadge = computed(() => (selectedSource.value ? environmentBadgeClass(selectedSource.value.environment) : ''))
 const databaseTypeLabel = computed(() => (selectedSource.value ? displayDatabaseType(selectedSource.value.databaseType) : ''))
 const initials = computed(() => (props.username ? props.username.slice(0, 2).toUpperCase() : '··'))
 
@@ -61,10 +61,9 @@ const changeSource = (event: Event) => {
         </select>
         <ChevronDown :size="14" aria-hidden="true" />
       </div>
-      <span class="badge" :class="environmentClass">{{ environmentLabel }}</span>
+      <span class="badge" :class="environmentBadge">{{ environmentLabel }}</span>
       <span class="source-type">{{ databaseTypeLabel }}</span>
       <div class="connection-actions">
-        <span class="connection-status"><span class="connection-dot"></span>连接正常</span>
         <button type="button" class="button test-button" :disabled="testing" @click="emit('testConnection')">
           <Check v-if="!testing" :size="14" />
           <PlugZap v-else :size="14" class="spin" />

@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -79,8 +80,7 @@ class AuthApiTest {
     mockMvc.perform(post("/api/auth/logout")).andExpect(status().isNoContent());
   }
 
-  private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder loginRequest(
-      String username, String password) {
+  private MockHttpServletRequestBuilder loginRequest(String username, String password) {
     return post("/api/auth/login")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"username\":\"%s\",\"password\":\"%s\"}".formatted(username, password));

@@ -6,7 +6,7 @@ import type { TableDefinition } from '../types'
 const props = defineProps<{
   tables: TableDefinition[]
   selectedTable: string
-  schema: string
+  sourceLabel: string
   refreshing: boolean
   mobileOpen: boolean
 }>()
@@ -70,7 +70,7 @@ const refresh = () => {
           <ChevronRight v-else :size="14" />
         </button>
         <Database :size="15" class="database-icon" />
-        <span class="mono">{{ schema }}</span>
+        <span class="mono">{{ sourceLabel }}</span>
         <span class="current-label">当前数据源</span>
       </div>
       <div v-if="rootExpanded" id="database-objects" class="database-objects">

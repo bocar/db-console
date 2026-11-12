@@ -8,17 +8,41 @@ import type {
   TableDefinition,
 } from '../types'
 
+/** 错误码联合：镜像后端 ApiError.code，新增码需同步（手写 wire 契约，ADR-0003）。 */
+export type ApiErrorCode =
+  | 'UNAUTHENTICATED'
+  | 'BAD_CREDENTIALS'
+  | 'INVALID_REQUEST'
+  | 'NETWORK_ERROR'
+  | 'REQUEST_FAILED'
+  | 'TRANSACTION_OPEN'
+
 /** 带错误码的 API 异常：code 供前端分派，message 面向用户。 */
 export class ApiClientError extends Error {
-  readonly code: string
+  readonly code: ApiErrorCode
   readonly status: number
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: ApiErrorCode, message: string, status: number) {
     super(message)
     this.name = 'ApiClientError'
     this.code = code
     this.status = status
   }
+}
+
+const KNOWN_ERROR_CODES: readonly string[] = [
+  'UNAUTHENTICATED',
+  'BAD_CREDENTIALS',
+  'INVALID_REQUEST',
+  'NETWORK_ERROR',
+  'REQUEST_FAILED',
+  'TRANSACTION_OPEN',
+]
+
+function toErrorCode(value: unknown): ApiErrorCode {
+  return typeof value === 'string' && KNOWN_ERROR_CODES.includes(value)
+    ? (value as ApiErrorCode)
+    : 'REQUEST_FAILED'
 }
 
 /** 真实后端 adapter：Cookie 会话 + 统一错误映射。 */
@@ -55,11 +79,11 @@ export class HttpApiClient implements ApiClient {
   }
 
   private async toApiError(response: Response): Promise<ApiClientError> {
-    let code = 'REQUEST_FAILED'
+    let code: ApiErrorCode = 'REQUEST_FAILED'
     let message = '请求失败，请稍后重试。'
     try {
       const body = (await response.json()) as { code?: string; message?: string }
-      if (body.code) code = body.code
+      if (body.code) code = toErrorCode(body.code)
       if (body.message) message = body.message
     } catch {
       // 保持默认错误信息

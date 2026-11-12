@@ -1,7 +1,8 @@
 package io.github.dbconsole.auth;
 
-import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.web.ApiError;
+import io.github.dbconsole.web.SessionAuthInterceptor;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -20,14 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-  public static final String USERNAME_ATTRIBUTE = "auth.username";
-
   private final SessionService sessions;
-  private final DbConsoleProperties properties;
 
-  public AuthController(SessionService sessions, DbConsoleProperties properties) {
+  public AuthController(SessionService sessions) {
     this.sessions = sessions;
-    this.properties = properties;
   }
 
   @PostMapping("/login")
@@ -38,16 +35,14 @@ public class AuthController {
       return ResponseEntity.status(401)
           .body(new ApiError("BAD_CREDENTIALS", "用户名或密码不正确"));
     }
-    response.addHeader(
-        HttpHeaders.SET_COOKIE,
-        SessionCookies.sessionCookie(token.get(), properties.session().timeout()));
+    response.addHeader(HttpHeaders.SET_COOKIE, SessionCookies.sessionCookie(token.get()));
     return ResponseEntity.ok(new SessionInfo(request.username()));
   }
 
   @PostMapping("/logout")
   public void logout(HttpServletRequest request, HttpServletResponse response) {
     if (request.getCookies() != null) {
-      for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+      for (Cookie cookie : request.getCookies()) {
         if (SessionCookies.SESSION_COOKIE.equals(cookie.getName())) {
           sessions.logout(cookie.getValue());
         }
@@ -58,7 +53,8 @@ public class AuthController {
   }
 
   @GetMapping("/session")
-  public SessionInfo session(@RequestAttribute(USERNAME_ATTRIBUTE) String username) {
+  public SessionInfo session(
+      @RequestAttribute(SessionAuthInterceptor.USERNAME_ATTRIBUTE) String username) {
     return new SessionInfo(username);
   }
 }

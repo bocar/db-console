@@ -71,7 +71,7 @@ const submit = async () => {
         <p class="login-overline">欢迎回来</p>
         <h2 id="login-title">登录工作台</h2>
         <p class="login-description">使用部署配置中的应用账号登录。</p>
-        <form class="login-form" method="post" action="#workspace" @submit.prevent="submit">
+        <form class="login-form" @submit.prevent="submit">
           <div class="form-field">
             <label for="username">用户名</label>
             <div class="input-shell">

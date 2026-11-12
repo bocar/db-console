@@ -19,10 +19,17 @@ import type {
 export class MockApiClient implements ApiClient {
   private static nextId = 1
 
+  private readonly delayMs: number
+
   private loggedIn = false
   private historyEntries: HistoryEntry[] = []
   private transactionPendingBySource = new Map<string, boolean>()
   private pendingExecution: (() => void) | null = null
+
+  /** delayMs 可注入：测试传 0 以免等待。 */
+  constructor(delayMs = 850) {
+    this.delayMs = delayMs
+  }
 
   readonly availableSources: DataSourceInfo[] = [
     { id: 'mysql-work-note', displayName: 'MySQL 工作笔记库', environment: 'DEVELOPMENT', databaseType: 'MYSQL', compatibilityMode: 'NATIVE' },
@@ -91,7 +98,7 @@ export class MockApiClient implements ApiClient {
 
   auth = {
     login: async (username: string, password: string): Promise<SessionInfo> => {
-      await delay(30)
+      await this.delay(30)
       if (username !== 'admin' || password !== 'db-console') {
         throw new ApiClientError('BAD_CREDENTIALS', '用户名或密码不正确', 401)
       }
@@ -102,7 +109,7 @@ export class MockApiClient implements ApiClient {
       this.loggedIn = false
     },
     session: async (): Promise<SessionInfo> => {
-      await delay(10)
+      await this.delay(10)
       if (!this.loggedIn) {
         throw new ApiClientError('UNAUTHENTICATED', '未登录或会话已失效，请重新登录', 401)
       }
@@ -112,13 +119,17 @@ export class MockApiClient implements ApiClient {
 
   dataSources = {
     list: async (): Promise<DataSourceInfo[]> => [...this.availableSources],
-    testConnection: async (): Promise<void> => {
-      await delay(120)
+    testConnection: async (id: string): Promise<void> => {
+      this.requireSource(id)
+      await this.delay(120)
     },
   }
 
   metadata = {
-    tables: async (): Promise<TableDefinition[]> => [...this.tables],
+    tables: async (sourceId: string): Promise<TableDefinition[]> => {
+      this.requireSource(sourceId)
+      return [...this.tables]
+    },
   }
 
   sql = {
@@ -126,39 +137,42 @@ export class MockApiClient implements ApiClient {
       new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pendingExecution = null
-          resolve(this.resolveExecution(sourceId, sql, confirmationToken))
-        }, 850)
+          try {
+            resolve(this.resolveExecution(sourceId, sql, confirmationToken))
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error('执行失败'))
+          }
+        }, this.delayMs)
         this.pendingExecution = () => {
           clearTimeout(timer)
           this.pendingExecution = null
           reject(new Error('查询已取消'))
         }
       }),
-    cancel: async (): Promise<void> => {
+    cancel: async (sourceId: string): Promise<void> => {
+      this.requireSource(sourceId)
       this.pendingExecution?.()
     },
   }
 
   transaction = {
     commit: async (sourceId: string): Promise<void> => {
-      await delay(80)
-      this.transactionPendingBySource.set(sourceId, false)
-      this.historyEntries = this.historyEntries.map((entry) =>
-        entry.sourceId === sourceId && entry.uncommitted ? { ...entry, uncommitted: false } : entry,
-      )
+      await this.delay(80)
+      this.finishTransaction(sourceId)
     },
     rollback: async (sourceId: string): Promise<void> => {
-      await delay(80)
-      this.transactionPendingBySource.set(sourceId, false)
-      this.historyEntries = this.historyEntries.map((entry) =>
-        entry.sourceId === sourceId && entry.uncommitted ? { ...entry, uncommitted: false } : entry,
-      )
+      await this.delay(80)
+      this.finishTransaction(sourceId)
     },
   }
 
   history = {
-    list: async (): Promise<HistoryEntry[]> => [...this.historyEntries],
+    list: async (sourceId: string): Promise<HistoryEntry[]> => {
+      this.requireSource(sourceId)
+      return this.historyEntries.filter((entry) => entry.sourceId === sourceId)
+    },
     clear: async (sourceId: string): Promise<void> => {
+      this.requireSource(sourceId)
       this.historyEntries = this.historyEntries.filter((entry) => entry.sourceId !== sourceId)
     },
   }
@@ -171,6 +185,24 @@ export class MockApiClient implements ApiClient {
   /** 测试辅助：读取某数据源的事务未提交状态。 */
   isTransactionPending(sourceId: string): boolean {
     return this.transactionPendingBySource.get(sourceId) ?? false
+  }
+
+  private requireSource(id: string): void {
+    if (!this.availableSources.some((source) => source.id === id)) {
+      throw new ApiClientError('REQUEST_FAILED', '未知数据源标识', 404)
+    }
+  }
+
+  private finishTransaction(sourceId: string): void {
+    this.transactionPendingBySource.set(sourceId, false)
+    this.historyEntries = this.historyEntries.map((entry) =>
+      entry.sourceId === sourceId && entry.uncommitted ? { ...entry, uncommitted: false } : entry,
+    )
+  }
+
+  private delay(milliseconds: number): Promise<void> {
+    const scaled = this.delayMs === 0 ? 0 : milliseconds
+    return new Promise((resolve) => setTimeout(resolve, scaled))
   }
 
   private resolveExecution(
@@ -220,8 +252,4 @@ export class MockApiClient implements ApiClient {
     }
     return { kind: 'QUERY', columns: this.queryColumns, rows: this.queryRows, elapsedMs, truncated: false }
   }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
