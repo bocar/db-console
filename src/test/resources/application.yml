@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: db-console
+
+db-console:
+  login:
+    username: admin
+    password: test-secret
+  session:
+    timeout: PT8H
+  execution:
+    timeout: PT30S
+    max-sql-length: 20000
+    max-concurrency: 4
+    default-page-size: 100
+    max-page-size: 1000
+    max-cell-bytes: 65536
+    max-result-bytes: 10485760
+  transaction:
+    idle-timeout: PT10M
+  audit:
+    directory: ./target/test-audit
+    retention: P30D
