@@ -159,6 +159,9 @@ public final class SqlStatementAnalyzer {
     }
     SqlTokenizer.Token verb = statement.get(mainVerbIndex);
     if (verb.isWord("SELECT")) {
+      if (hasDepthZeroInto(statement, mainVerbIndex)) {
+        return StatementKind.OTHER;
+      }
       return StatementKind.SELECT;
     }
     if (verb.isWord("INSERT")) {
@@ -192,6 +195,25 @@ public final class SqlStatementAnalyzer {
       return next != null && next.isWord("ON") ? StatementKind.COMMENT_ON : StatementKind.OTHER;
     }
     return StatementKind.OTHER;
+  }
+
+  /**
+   * SELECT 主句动词后深度 0 的 INTO（OUTFILE/DUMPFILE/变量赋值）使语句不再是纯只读查询（F-05
+   * 只放行原生 SELECT），归入超范围；括号内（子查询）的 INTO 不误拒。
+   */
+  private boolean hasDepthZeroInto(List<SqlTokenizer.Token> statement, int mainVerbIndex) {
+    int depth = 0;
+    for (int index = mainVerbIndex + 1; index < statement.size(); index++) {
+      SqlTokenizer.Token token = statement.get(index);
+      if (token.type() == SqlTokenizer.TokenType.LPAREN) {
+        depth++;
+      } else if (token.type() == SqlTokenizer.TokenType.RPAREN) {
+        depth = Math.max(0, depth - 1);
+      } else if (depth == 0 && token.isWord("INTO")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** 主句动词之后深度 0 的 WHERE 视为最外层条件；括号内（子查询）不算。 */

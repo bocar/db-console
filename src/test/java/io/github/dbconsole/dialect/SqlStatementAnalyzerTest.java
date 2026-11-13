@@ -219,6 +219,19 @@ class SqlStatementAnalyzerTest {
   }
 
   @Nested
+  @DisplayName("SELECT INTO 边界")
+  class SelectInto {
+
+    @Test
+    @DisplayName("SELECT ... INTO OUTFILE 不再按只读查询放行")
+    void selectIntoOutfileIsNotReadOnly() {
+      SqlStatement statement =
+          (SqlStatement) MYSQL.analyze("SELECT * FROM t INTO OUTFILE '/tmp/export.csv'");
+      assertThat(statement.kind()).isEqualTo(StatementKind.OTHER);
+    }
+  }
+
+  @Nested
   @DisplayName("类别谓词")
   class KindPredicates {
 
