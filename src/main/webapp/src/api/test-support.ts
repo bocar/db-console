@@ -22,7 +22,12 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
       },
       cancel: async () => undefined,
     },
-    transaction: { commit: async () => undefined, rollback: async () => undefined },
+    transaction: {
+      begin: async () => ({ active: true, sourceId: null }),
+      commit: async () => ({ active: false, sourceId: null }),
+      rollback: async () => ({ active: false, sourceId: null }),
+      status: async () => ({ active: false, sourceId: null }),
+    },
     history: { list: async () => [], clear: async () => undefined },
   }
   return { ...base, ...overrides } as ApiClient

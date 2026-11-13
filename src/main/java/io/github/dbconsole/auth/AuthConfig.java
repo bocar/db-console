@@ -15,7 +15,11 @@ public class AuthConfig {
   }
 
   @Bean
-  public SessionService sessionService(DbConsoleProperties properties, Clock clock) {
-    return new SessionService(properties.login(), properties.session().timeout(), clock);
+  public SessionService sessionService(
+      DbConsoleProperties properties,
+      Clock clock,
+      org.springframework.context.ApplicationEventPublisher eventPublisher) {
+    return new SessionService(
+        properties.login(), properties.session().timeout(), clock, eventPublisher);
   }
 }

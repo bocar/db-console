@@ -10,6 +10,7 @@ import type {
   QueryRow,
   SessionInfo,
   TableDefinition,
+  TransactionStatus,
 } from '../types'
 
 /**
@@ -158,13 +159,24 @@ export class MockApiClient implements ApiClient {
   }
 
   transaction = {
-    commit: async (sourceId: string): Promise<void> => {
-      await this.delay(80)
-      this.finishTransaction(sourceId)
+    begin: async (sourceId: string): Promise<TransactionStatus> => {
+      this.requireSource(sourceId)
+      await this.delay(60)
+      return { active: true, sourceId }
     },
-    rollback: async (sourceId: string): Promise<void> => {
+    commit: async (sourceId: string): Promise<TransactionStatus> => {
       await this.delay(80)
       this.finishTransaction(sourceId)
+      return { active: false, sourceId: null }
+    },
+    rollback: async (sourceId: string): Promise<TransactionStatus> => {
+      await this.delay(80)
+      this.finishTransaction(sourceId)
+      return { active: false, sourceId: null }
+    },
+    status: async (sourceId: string): Promise<TransactionStatus> => {
+      this.requireSource(sourceId)
+      return { active: this.isTransactionPending(sourceId), sourceId }
     },
   }
 

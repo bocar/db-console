@@ -25,15 +25,20 @@ public final class SessionService {
   private final DbConsoleProperties.LoginProperties login;
   private final Duration timeout;
   private final Clock clock;
+  private final org.springframework.context.ApplicationEventPublisher eventPublisher;
   private final SecureRandom random = new SecureRandom();
   private final Map<String, LoginSession> sessionsByToken = new ConcurrentHashMap<>();
   private long authenticationCount;
 
   public SessionService(
-      DbConsoleProperties.LoginProperties login, Duration timeout, Clock clock) {
+      DbConsoleProperties.LoginProperties login,
+      Duration timeout,
+      Clock clock,
+      org.springframework.context.ApplicationEventPublisher eventPublisher) {
     this.login = login;
     this.timeout = timeout;
     this.clock = clock;
+    this.eventPublisher = eventPublisher;
   }
 
   /** 校验登录凭据，成功时签发新会话令牌。 */
@@ -66,12 +71,15 @@ public final class SessionService {
     return Optional.of(session.username());
   }
 
-  /** 登出并令牌立即失效。 */
+  /** 登出并令牌立即失效；发布会话结束事件供事务层等清理。 */
   public void logout(String token) {
-    if (token != null) {
-      sessionsByToken.remove(token);
+    if (token != null && sessionsByToken.remove(token) != null) {
+      eventPublisher.publishEvent(new SessionEnded(token));
     }
   }
+
+  /** 会话结束事件（登出）。 */
+  public record SessionEnded(String token) {}
 
   private synchronized void maybeSweepExpired() {
     if (++authenticationCount % SWEEP_INTERVAL != 0) {

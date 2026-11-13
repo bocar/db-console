@@ -20,7 +20,10 @@ class SessionServiceTest {
 
   private SessionService service() {
     return new SessionService(
-        new DbConsoleProperties.LoginProperties("admin", "test-secret"), TIMEOUT, clock);
+        new DbConsoleProperties.LoginProperties("admin", "test-secret"),
+        TIMEOUT,
+        clock,
+        event -> {});
   }
 
   @Test

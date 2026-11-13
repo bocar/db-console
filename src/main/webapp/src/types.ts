@@ -76,6 +76,12 @@ export interface ConfirmationRequired {
   confirmationToken: string
 }
 
+/** 手动事务状态（F-16）：活动时携带绑定的数据源标识。 */
+export interface TransactionStatus {
+  active: boolean
+  sourceId: string | null
+}
+
 /** 会话内历史（wire）：执行状态与事务状态分离。 */
 export interface HistoryEntry {
   id: number

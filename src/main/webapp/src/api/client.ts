@@ -7,6 +7,7 @@ import type {
   HistoryEntry,
   SessionInfo,
   TableDefinition,
+  TransactionStatus,
 } from '../types'
 
 /**
@@ -31,8 +32,10 @@ export interface ApiClient {
     cancel(sourceId: string): Promise<void>
   }
   transaction: {
-    commit(sourceId: string): Promise<void>
-    rollback(sourceId: string): Promise<void>
+    begin(sourceId: string): Promise<TransactionStatus>
+    commit(sourceId: string): Promise<TransactionStatus>
+    rollback(sourceId: string): Promise<TransactionStatus>
+    status(sourceId: string): Promise<TransactionStatus>
   }
   history: {
     list(sourceId: string): Promise<HistoryEntry[]>

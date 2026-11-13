@@ -2,19 +2,26 @@ import { ref } from 'vue'
 import { useApiClient } from '../api/client'
 import { useToast } from './useToast'
 
-const pendingBySource = ref(new Map<string, boolean>())
+const active = ref(false)
+const busy = ref(false)
 
-/** 手动事务（F-16）：未提交状态与提交/回滚。 */
+/** 手动事务（F-16）：开启、提交与回滚；状态与后端事务层同步。 */
 export function useManualTransaction() {
   const api = useApiClient()
   const toast = useToast()
 
-  function isPending(sourceId: string): boolean {
-    return pendingBySource.value.get(sourceId) ?? false
-  }
-
-  function markPending(sourceId: string): void {
-    pendingBySource.value = new Map(pendingBySource.value).set(sourceId, true)
+  async function begin(sourceId: string): Promise<void> {
+    if (active.value || busy.value) return
+    busy.value = true
+    try {
+      const status = await api.transaction.begin(sourceId)
+      active.value = status.active
+      toast.notify('手动事务已开启，本数据源上的变更将暂不提交。')
+    } catch (error) {
+      toast.notify(error instanceof Error ? error.message : '开启事务失败。')
+    } finally {
+      busy.value = false
+    }
   }
 
   async function commit(sourceId: string): Promise<void> {
@@ -27,22 +34,40 @@ export function useManualTransaction() {
 
   async function finish(
     sourceId: string,
-    action: (id: string) => Promise<void>,
+    action: (id: string) => Promise<{ active: boolean }>,
     successMessage: string,
     failureMessage: string,
   ): Promise<void> {
+    busy.value = true
     try {
-      await action(sourceId)
-      pendingBySource.value = new Map(pendingBySource.value).set(sourceId, false)
+      const status = await action(sourceId)
+      active.value = status.active
       toast.notify(successMessage)
     } catch (error) {
       toast.notify(error instanceof Error ? error.message : failureMessage)
+    } finally {
+      busy.value = false
     }
   }
 
-  function reset(): void {
-    pendingBySource.value = new Map()
+  /** 从服务端同步事务状态（登入/切换数据源后）。 */
+  async function sync(sourceId: string): Promise<void> {
+    try {
+      const status = await api.transaction.status(sourceId)
+      active.value = status.active
+    } catch {
+      active.value = false
+    }
   }
 
-  return { isPending, markPending, commit, rollback, reset }
+  function markPending(): void {
+    active.value = true
+  }
+
+  function reset(): void {
+    active.value = false
+    busy.value = false
+  }
+
+  return { active, busy, begin, commit, rollback, sync, markPending, reset }
 }

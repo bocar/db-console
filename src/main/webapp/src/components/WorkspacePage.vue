@@ -51,7 +51,7 @@ const editorSize = ref(43)
 const resizing = ref(false)
 const workbench = ref<HTMLElement | null>(null)
 
-const transactionPending = computed(() => (selectedSource.value ? transaction.isPending(selectedSource.value.id) : false))
+const transactionActive = computed(() => transaction.active.value && !!selectedSource.value)
 const currentHistory = computed(() => (selectedSource.value ? historyStore.currentFor(selectedSource.value.id) : []))
 const confirmTitle = computed(() =>
   pendingConfirmation.value?.reason === 'PRODUCTION_WRITE' ? '确认在生产库执行？' : '确认执行此操作？')
@@ -62,7 +62,7 @@ const workbenchStyle = computed(() => ({ '--editor-size': `${editorSize.value}%`
 async function loadWorkspaceForSource(): Promise<void> {
   const source = selectedSource.value
   if (!source) return
-  await Promise.all([objectTree.loadTables(source.id), loadHistory(source.id)])
+  await Promise.all([objectTree.loadTables(source.id), loadHistory(source.id), transaction.sync(source.id)])
 }
 
 onMounted(async () => {
@@ -92,10 +92,15 @@ const rollbackTransaction = () => {
   if (source) void transaction.rollback(source.id)
 }
 
+const beginTransaction = () => {
+  const source = selectedSource.value
+  if (source) void transaction.begin(source.id)
+}
+
 const changeSource = (id: string) => {
   const current = selectedSource.value
   if (!current || id === current.id) return
-  if (transaction.isPending(current.id)) {
+  if (transaction.active.value) {
     notify('当前有未提交事务，请先提交或回滚再切换数据源。')
     return
   }
@@ -239,15 +244,18 @@ onUnmounted(() => {
           <div class="editor-host">
             <SqlEditor ref="editorRef" v-model="sql" @execute="execute" />
           </div>
-          <div class="transaction-bar" :class="{ 'has-pending': transactionPending }">
+          <div class="transaction-bar" :class="{ 'has-pending': transactionActive }">
             <GitCommitHorizontal :size="16" />
             <span class="transaction-mode">手动事务</span>
-            <span class="transaction-state"><span class="transaction-dot"></span>{{ transactionPending ? '有变更未提交' : '无未提交变更' }}</span>
+            <span class="transaction-state"><span class="transaction-dot"></span>{{ transactionActive ? '事务进行中，变更未提交' : '未开启事务' }}</span>
             <span class="transaction-context">当前会话 · {{ selectedSource?.displayName ?? '' }}</span>
             <span v-if="selectedSource" class="badge" :class="environmentBadgeClass(selectedSource.environment)">{{ displayEnvironment(selectedSource.environment) }}环境</span>
             <div class="transaction-actions">
-              <button type="button" class="button" :disabled="!transactionPending" @click="rollbackTransaction"><RotateCcw :size="13" />回滚</button>
-              <button type="button" class="button commit-button" :disabled="!transactionPending" @click="commitTransaction"><Check :size="13" />提交 Commit</button>
+              <button v-if="!transactionActive" type="button" class="button" :disabled="transaction.busy.value || !selectedSource" @click="beginTransaction">开启事务</button>
+              <template v-else>
+                <button type="button" class="button" :disabled="transaction.busy.value" @click="rollbackTransaction"><RotateCcw :size="13" />回滚</button>
+                <button type="button" class="button commit-button" :disabled="transaction.busy.value" @click="commitTransaction"><Check :size="13" />提交 Commit</button>
+              </template>
             </div>
           </div>
         </section>
@@ -276,7 +284,7 @@ onUnmounted(() => {
           :total-rows="totalRows"
           :elapsed="elapsedMs"
           :active-tab="activeTab"
-          :transaction-pending="transactionPending"
+          :transaction-pending="transactionActive"
           :source-name="selectedSource?.displayName ?? ''"
           :has-result="hasResult"
           :update-info="updateResult ?? undefined"

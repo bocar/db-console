@@ -7,6 +7,7 @@ import type {
   HistoryEntry,
   SessionInfo,
   TableDefinition,
+  TransactionStatus,
 } from '../types'
 
 /** 错误码单一来源：镜像后端 ApiError.code，新增码需同步（手写 wire 契约，ADR-0003）。 */
@@ -122,10 +123,14 @@ export class HttpApiClient implements ApiClient {
   }
 
   transaction = {
-    commit: (sourceId: string): Promise<void> =>
-      this.request<void>('POST', `/api/transaction/${encodeURIComponent(sourceId)}/commit`),
-    rollback: (sourceId: string): Promise<void> =>
-      this.request<void>('POST', `/api/transaction/${encodeURIComponent(sourceId)}/rollback`),
+    begin: (sourceId: string): Promise<TransactionStatus> =>
+      this.request<TransactionStatus>('POST', `/api/transaction/${encodeURIComponent(sourceId)}/begin`),
+    commit: (sourceId: string): Promise<TransactionStatus> =>
+      this.request<TransactionStatus>('POST', `/api/transaction/${encodeURIComponent(sourceId)}/commit`),
+    rollback: (sourceId: string): Promise<TransactionStatus> =>
+      this.request<TransactionStatus>('POST', `/api/transaction/${encodeURIComponent(sourceId)}/rollback`),
+    status: (sourceId: string): Promise<TransactionStatus> =>
+      this.request<TransactionStatus>('GET', `/api/transaction/${encodeURIComponent(sourceId)}`),
   }
 
   history = {

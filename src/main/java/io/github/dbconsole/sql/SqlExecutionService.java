@@ -9,6 +9,8 @@ import io.github.dbconsole.dialect.StatementKind;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
+import io.github.dbconsole.transaction.TransactionManager;
+import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -29,16 +31,19 @@ public class SqlExecutionService {
   private final DataSourceRegistry registry;
   private final ConfirmationService confirmations;
   private final ConnectionFactory connections;
+  private final TransactionManager transactions;
   private final DbConsoleProperties properties;
 
   public SqlExecutionService(
       DataSourceRegistry registry,
       ConfirmationService confirmations,
       ConnectionFactory connections,
+      TransactionManager transactions,
       DbConsoleProperties properties) {
     this.registry = registry;
     this.confirmations = confirmations;
     this.connections = connections;
+    this.transactions = transactions;
     this.properties = properties;
   }
 
@@ -57,6 +62,13 @@ public class SqlExecutionService {
     if (statement.kind() == StatementKind.OTHER) {
       throw new SqlRejectException("OUT_OF_SCOPE", "该语句超出允许的操作范围");
     }
+    Connection transactionConnection = transactions.connectionFor(sessionToken, source.id());
+    // 有未提交事务时隐式提交 DDL 一律先拦截（F-16），不进入确认流程
+    if (transactionConnection != null && statement.kind().isImplicitCommitDdl()) {
+      throw new TransactionStateException(
+          TransactionManager.CODE_TRANSACTION_OPEN,
+          "请先提交或回滚当前事务，再执行隐式提交 DDL");
+    }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
     if (requirement != ConfirmationDecision.Requirement.NOT_REQUIRED) {
@@ -70,13 +82,21 @@ public class SqlExecutionService {
             confirmations.issue(sessionToken, source.id(), request.sql()));
       }
     }
-    return run(source, request.sql(), statement);
+    return run(source, request.sql(), statement, sessionToken, transactionConnection);
   }
 
-  private SqlResponses run(ResolvedDataSource source, String sql, SqlStatement statement) {
+  private SqlResponses run(
+      ResolvedDataSource source,
+      String sql,
+      SqlStatement statement,
+      String sessionToken,
+      Connection transactionConnection) {
     long startedAt = System.nanoTime();
-    try (Connection connection = connections.open(source)) {
-      connection.setAutoCommit(true);
+    boolean inTransaction = transactionConnection != null;
+    // 事务连接由事务层持有：执行后归还（不 close、不改自动提交），并刷新空闲时钟
+    try (Connection scope =
+        inTransaction ? null : connections.open(source)) {
+      Connection connection = inTransaction ? transactionConnection : scope;
       try (Statement jdbcStatement = connection.createStatement()) {
         int timeoutSeconds =
             Math.max(1, (int) properties.execution().timeout().toSeconds());
@@ -91,12 +111,18 @@ public class SqlExecutionService {
         if (isResultSet) {
           try (ResultSet resultSet = jdbcStatement.getResultSet()) {
             int maxRows = properties.execution().maxPageSize();
+            if (inTransaction) {
+              transactions.touch(sessionToken);
+            }
             return QueryResultMapper.map(resultSet, maxRows, elapsedMs);
           }
         }
         Integer affectedRows =
             statement.kind().isImplicitCommitDdl() ? null : jdbcStatement.getUpdateCount();
-        return new SqlResponses.UpdateResult(affectedRows, elapsedMs, false);
+        if (inTransaction) {
+          transactions.touch(sessionToken);
+        }
+        return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction);
       }
     } catch (SQLException exception) {
       long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;

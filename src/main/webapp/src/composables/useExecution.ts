@@ -68,7 +68,7 @@ export function useExecution(deps: ExecutionDeps) {
         toast.notify('查询已完成，结果已更新。')
       } else if (outcome.uncommitted) {
         deps.results.showUpdate(outcome)
-        deps.transaction.markPending(sourceId)
+        deps.transaction.markPending()
         toast.notify('执行成功，变更尚未提交。')
       } else if (outcome.affectedRows === null) {
         deps.results.showUpdate(outcome)
