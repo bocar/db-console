@@ -152,8 +152,12 @@ public class SqlExecutionService {
             elapsedMs);
         if (isResultSet) {
           try (ResultSet resultSet = jdbcStatement.getResultSet()) {
-            int maxRows = properties.execution().maxPageSize();
-            return QueryResultMapper.map(resultSet, maxRows, elapsedMs);
+            return QueryResultMapper.map(
+                resultSet,
+                properties.execution().maxPageSize(),
+                properties.execution().maxResultBytes(),
+                properties.execution().maxCellBytes(),
+                elapsedMs);
           }
         }
         Integer affectedRows =
@@ -162,12 +166,22 @@ public class SqlExecutionService {
       }
     } catch (SQLException exception) {
       long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+      boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
+      boolean timeoutOrDisconnect =
+          exception instanceof java.sql.SQLTimeoutException
+              || exception.getMessage() != null
+                  && (exception.getMessage().contains("timed out")
+                      || exception.getMessage().contains("Communications link failure")
+                      || exception.getMessage().contains("connection"));
+      if (writeStatement && timeoutOrDisconnect) {
+        log.warn(
+            "执行结果未知 sourceId={} kind={} sqlState={} elapsedMs={}",
+            source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
+        return new SqlResponses.UnknownOutcome(safeMessage(exception));
+      }
       log.warn(
           "SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
-          source.id(),
-          statement.kind(),
-          exception.getSQLState(),
-          elapsedMs);
+          source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
       throw new DatabaseExecutionException(safeMessage(exception), exception);
     } finally {
       if (inTransaction) {

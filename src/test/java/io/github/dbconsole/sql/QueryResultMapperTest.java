@@ -20,7 +20,7 @@ class QueryResultMapperTest {
   void mapsRowsByPositionAndKeepsColumnsForZeroRows() throws Exception {
     ResultSet resultSet = resultSet(new Object[0][], "id", "name");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 5);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 10_000_000, 65_536, 5);
 
     assertThat(result.kind()).isEqualTo("QUERY");
     assertThat(result.columns()).hasSize(2);
@@ -35,7 +35,7 @@ class QueryResultMapperTest {
     Object[] row = {920000000000000001L, new BigDecimal("12.34"), 7, null, ""};
     ResultSet resultSet = resultSet(new Object[][] {row}, "big", "amount", "small", "n", "e");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 10_000_000, 65_536, 1);
 
     assertThat(result.rows().get(0))
         .containsExactly("920000000000000001", "12.34", 7, null, "");
@@ -49,7 +49,7 @@ class QueryResultMapperTest {
     Object[] row = {timestamp, Boolean.TRUE, bytes};
     ResultSet resultSet = resultSet(new Object[][] {row}, "at", "ok", "data");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 10_000_000, 65_536, 1);
 
     assertThat(result.rows().get(0).get(0)).isEqualTo("2026-11-13 08:30:00.0");
     assertThat(result.rows().get(0).get(1)).isEqualTo(true);
@@ -62,7 +62,7 @@ class QueryResultMapperTest {
     Object[][] data = {{1}, {2}, {3}, {4}};
     ResultSet resultSet = resultSet(data, "id");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 2, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 2, 10_000_000, 65_536, 1);
 
     assertThat(result.rows()).hasSize(2);
     assertThat(result.truncated()).isTrue();

@@ -19,7 +19,8 @@ final class QueryResultMapper {
 
   private QueryResultMapper() {}
 
-  static SqlResponses.QueryResult map(ResultSet resultSet, int maxRows, long elapsedMs)
+  static SqlResponses.QueryResult map(
+      ResultSet resultSet, int maxRows, long resultBytesLimit, long cellBytesLimit, long elapsedMs)
       throws SQLException {
     ResultSetMetaData metadata = resultSet.getMetaData();
     int columnCount = metadata.getColumnCount();
@@ -31,14 +32,23 @@ final class QueryResultMapper {
     }
     List<List<Object>> rows = new ArrayList<>();
     boolean truncated = false;
+    long totalBytes = 0;
     while (resultSet.next()) {
       if (rows.size() >= maxRows) {
         truncated = true;
         break;
       }
       List<Object> row = new ArrayList<>(columnCount);
+      long rowBytes = 0;
       for (int index = 1; index <= columnCount; index++) {
-        row.add(mapValue(resultSet.getObject(index)));
+        Object value = mapValue(resultSet.getObject(index), cellBytesLimit);
+        row.add(value);
+        rowBytes += value == null ? 4 : String.valueOf(value).length() * 2L;
+      }
+      totalBytes += rowBytes;
+      if (totalBytes > resultBytesLimit) {
+        truncated = true;
+        break;
       }
       rows.add(row);
     }
@@ -50,7 +60,7 @@ final class QueryResultMapper {
    * 时间转文本，二进制转 Base64，NULL 与空字符串保持区分。
    * 读取失败按 SQLException 上抛，由执行层统一映射。
    */
-  static Object mapValue(Object value) throws SQLException {
+  static Object mapValue(Object value, long cellBytesLimit) throws SQLException {
     if (value == null) {
       return null;
     }
@@ -78,10 +88,21 @@ final class QueryResultMapper {
     if (value instanceof SerialBlob blob) {
       return Base64.getEncoder().encodeToString(blob.getBytes(1, (int) blob.length()));
     }
-    if (value instanceof String || value instanceof Integer || value instanceof Short
+    if (value instanceof String text) {
+      return truncateCell(text, cellBytesLimit);
+    }
+    if (value instanceof Integer || value instanceof Short
         || value instanceof Byte || value instanceof Boolean) {
       return value;
     }
-    return value.toString();
+    return truncateCell(value.toString(), cellBytesLimit);
+  }
+
+  private static String truncateCell(String text, long cellBytesLimit) {
+    if (text.length() * 2L <= cellBytesLimit) {
+      return text;
+    }
+    int maxChars = (int) (cellBytesLimit / 2);
+    return text.substring(0, maxChars) + "<truncated:" + text.length() + "chars>";
   }
 }

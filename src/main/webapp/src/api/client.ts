@@ -8,6 +8,7 @@ import type {
   SessionInfo,
   TableDefinition,
   TransactionStatus,
+  UnknownOutcome,
 } from '../types'
 
 /**
@@ -29,7 +30,7 @@ export interface ApiClient {
     tableStructure(sourceId: string, table: string): Promise<TableDefinition>
   }
   sql: {
-    execute(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired>
+    execute(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>
     cancel(sourceId: string): Promise<void>
   }
   transaction: {

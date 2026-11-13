@@ -40,5 +40,13 @@ public sealed interface SqlResponses {
     }
   }
 
+  /** 执行结果未知（F-10）：写入或提交超时/断连且状态无法确认，不自动重试。 */
+  record UnknownOutcome(String kind, String message) implements SqlResponses {
+
+    public UnknownOutcome(String message) {
+      this("UNKNOWN_OUTCOME", message);
+    }
+  }
+
   record QueryColumn(String name, String type) {}
 }

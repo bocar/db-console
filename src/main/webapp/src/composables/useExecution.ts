@@ -65,6 +65,10 @@ export function useExecution(deps: ExecutionDeps) {
         return
       }
       pendingConfirmation.value = null
+      if (outcome.kind === 'UNKNOWN_OUTCOME') {
+        toast.notify(`执行结果未知：${outcome.message}。系统不会自动重试，请核实数据库状态。`)
+        return
+      }
       if (outcome.kind === 'QUERY') {
         deps.results.showQuery(outcome)
         toast.notify('查询已完成，结果已更新。')

@@ -83,6 +83,12 @@ export interface UpdateResult {
 
 export type ExecutionOutcome = QueryResult | UpdateResult
 
+/** 执行结果未知（F-10）：写入或提交超时/断连且状态无法确认，不自动重试。 */
+export interface UnknownOutcome {
+  kind: 'UNKNOWN_OUTCOME'
+  message: string
+}
+
 /** 需要执行确认的响应：凭据绑定会话、数据源与 SQL 文本（F-09），由后端签发。 */
 export interface ConfirmationRequired {
   kind: 'CONFIRMATION_REQUIRED'
