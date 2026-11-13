@@ -14,6 +14,7 @@ import io.github.dbconsole.metadata.TableStructure;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;import io.github.dbconsole.metadata.TableStructureService;
+import io.github.dbconsole.history.HistoryService;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
@@ -38,6 +39,7 @@ public class SqlExecutionService {
   private final ConnectionFactory connections;
   private final TransactionManager transactions;
   private final TableStructureService tableStructures;
+  private final HistoryService history;
   private final DbConsoleProperties properties;
 
   public SqlExecutionService(
@@ -46,12 +48,14 @@ public class SqlExecutionService {
       ConnectionFactory connections,
       TransactionManager transactions,
       TableStructureService tableStructures,
+      HistoryService history,
       DbConsoleProperties properties) {
     this.registry = registry;
     this.confirmations = confirmations;
     this.connections = connections;
     this.transactions = transactions;
     this.tableStructures = tableStructures;
+    this.history = history;
     this.properties = properties;
   }
 
@@ -151,6 +155,7 @@ public class SqlExecutionService {
             source.id(),
             statement.kind(),
             elapsedMs);
+        history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
         if (isResultSet) {
           try (ResultSet resultSet = jdbcStatement.getResultSet()) {
             return QueryResultMapper.map(resultSet, properties.execution(), elapsedMs);
@@ -160,6 +165,7 @@ public class SqlExecutionService {
         // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
         Integer affectedRows =
             statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
+        history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
         return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
             statement.kind().isImplicitCommitDdl());
       }

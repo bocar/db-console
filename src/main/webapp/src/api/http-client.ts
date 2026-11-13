@@ -141,6 +141,6 @@ export class HttpApiClient implements ApiClient {
     list: (sourceId: string): Promise<HistoryEntry[]> =>
       this.request<HistoryEntry[]>(`GET`, `/api/history/${encodeURIComponent(sourceId)}`),
     clear: (sourceId: string): Promise<void> =>
-      this.request<void>('POST', `/api/history/${encodeURIComponent(sourceId)}/clear`),
+      this.request<void>('DELETE', `/api/history/${encodeURIComponent(sourceId)}`),
   }
 }

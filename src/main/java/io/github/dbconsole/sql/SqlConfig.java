@@ -2,6 +2,7 @@ package io.github.dbconsole.sql;
 
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.jdbc.ConnectionFactory;
+import io.github.dbconsole.history.HistoryService;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.transaction.TransactionManager;
@@ -24,8 +25,10 @@ public class SqlConfig {
       ConnectionFactory connections,
       TransactionManager transactions,
       TableStructureService tableStructures,
+      HistoryService history,
       DbConsoleProperties properties) {
     return new SqlExecutionService(
-        registry, confirmations, connections, transactions, tableStructures, properties);
+        registry, confirmations, connections, transactions, tableStructures, history,
+        properties);
   }
 }
