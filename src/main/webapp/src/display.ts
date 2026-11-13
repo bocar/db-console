@@ -1,4 +1,4 @@
-import type { DatabaseType, Environment, HistoryEntry, QueryValue } from './types'
+import type { ConfirmationRequired, DatabaseType, Environment, HistoryEntry, QueryValue } from './types'
 
 const ENVIRONMENT_TEXT: Record<Environment, string> = {
   DEVELOPMENT: '开发',
@@ -53,8 +53,8 @@ export function displayQueryValue(value: QueryValue): string {
   return String(value)
 }
 
-/** 确认要求的原因说明（F-09）。 */
-export type ConfirmationReason = 'PRODUCTION_WRITE' | 'MISSING_WHERE' | 'IMPLICIT_COMMIT_DDL'
+/** 确认要求的原因（F-09），从 wire 类型派生。 */
+export type ConfirmationReason = ConfirmationRequired['reason']
 
 export function confirmationReasonText(reason: ConfirmationReason): string {
   switch (reason) {

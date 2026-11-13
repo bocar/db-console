@@ -18,6 +18,7 @@ class ConfirmationDecisionTest {
       "PRODUCTION | DELETE | true | PRODUCTION_WRITE",
       "PRODUCTION | SELECT | true | NOT_REQUIRED",
       "DEVELOPMENT | UPDATE | true | NOT_REQUIRED",
+      "DEVELOPMENT | DELETE | true | NOT_REQUIRED",
       "DEVELOPMENT | UPDATE | false | MISSING_WHERE",
       "DEVELOPMENT | DELETE | false | MISSING_WHERE",
       "DEVELOPMENT | INSERT | false | NOT_REQUIRED",

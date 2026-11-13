@@ -33,7 +33,9 @@ defineExpose({ open })
       </div>
       <h2 id="confirm-title">{{ props.title }}</h2>
       <p id="confirm-description" class="dialog-description">
-        {{ props.reasonText ?? '请核对目标环境和完整语句。确认只对当前会话、数据源和这份 SQL 有效。' }}
+        <template v-if="props.reasonText">{{ props.reasonText }}</template>
+        <template v-else>请核对目标环境和完整语句。</template>
+        确认只对当前会话、数据源和这份 SQL 有效。
       </p>
       <div class="target-box">
         <Database :size="16" />

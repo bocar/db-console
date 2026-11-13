@@ -73,20 +73,23 @@ class SqlApiTest {
     return execute("mysql-work-note", sql, confirmationToken);
   }
 
-  private MvcResult execute(String sourceId, String sql, String confirmationToken)
-      throws Exception {
+  private org.springframework.test.web.servlet.ResultActions executeRequest(
+      String sourceId, String sql, String confirmationToken) throws Exception {
     String body =
         confirmationToken == null
             ? "{\"sourceId\":\"%s\",\"sql\":%s}".formatted(sourceId, jsonText(sql))
             : "{\"sourceId\":\"%s\",\"sql\":%s,\"confirmationToken\":\"%s\"}"
                 .formatted(sourceId, jsonText(sql), confirmationToken);
-    return mockMvc
-        .perform(
-            post("/api/sql/execute")
-                .cookie(session)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
-        .andReturn();
+    return mockMvc.perform(
+        post("/api/sql/execute")
+            .cookie(session)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body));
+  }
+
+  private MvcResult execute(String sourceId, String sql, String confirmationToken)
+      throws Exception {
+    return executeRequest(sourceId, sql, confirmationToken).andReturn();
   }
 
   private static String jsonText(String value) {
@@ -168,23 +171,16 @@ class SqlApiTest {
   @Test
   @DisplayName("生产环境数据增删改一律需确认（含 CTE 写入），原因标注 PRODUCTION_WRITE")
   void productionWritesAlwaysRequireConfirmation() throws Exception {
-    MvcResult insert = execute("prod-source", "INSERT INTO t VALUES (1)", null);
-    mockMvc
-        .perform(
-            post("/api/sql/execute")
-                .cookie(session)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"sourceId\":\"prod-source\",\"sql\":\"INSERT INTO t VALUES (1)\"}"))
+    executeRequest("prod-source", "INSERT INTO t VALUES (1)", null)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"))
         .andExpect(jsonPath("$.reason").value("PRODUCTION_WRITE"));
 
-    MvcResult cteWrite =
-        execute("prod-source", "WITH c AS (SELECT 1) DELETE FROM t WHERE x IN (SELECT 1)", null);
-    String cteBody = cteWrite.getResponse().getContentAsString();
-    assertThat(cteBody).contains("\"kind\":\"CONFIRMATION_REQUIRED\"");
-    assertThat(cteBody).contains("\"reason\":\"PRODUCTION_WRITE\"");
+    String cte = "WITH c AS (SELECT 1) DELETE FROM t WHERE x IN (SELECT 1)";
+    executeRequest("prod-source", cte, null)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"))
+        .andExpect(jsonPath("$.reason").value("PRODUCTION_WRITE"));
   }
 
   @Test
