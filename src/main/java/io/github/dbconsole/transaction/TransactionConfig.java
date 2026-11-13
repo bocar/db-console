@@ -1,5 +1,6 @@
 package io.github.dbconsole.transaction;
 
+import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.auth.SessionService;
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.jdbc.ConnectionFactory;
@@ -17,9 +18,10 @@ public class TransactionConfig {
   public TransactionManager transactionManager(
       ConnectionFactory connections,
       SessionService sessions,
+      AuditService audit,
       DbConsoleProperties properties,
       Clock clock) {
     return new TransactionManager(
-        connections, sessions, properties.transaction().idleTimeout(), clock);
+        connections, sessions, audit, properties.transaction().idleTimeout(), clock);
   }
 }

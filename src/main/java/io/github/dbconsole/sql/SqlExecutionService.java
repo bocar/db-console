@@ -1,26 +1,28 @@
 package io.github.dbconsole.sql;
 
+import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.dialect.RejectedSql;
 import io.github.dbconsole.dialect.SqlAnalysisResult;
 import io.github.dbconsole.dialect.SqlStatement;
 import io.github.dbconsole.dialect.SqlStatementAnalyzer;
 import io.github.dbconsole.dialect.StatementKind;
+import io.github.dbconsole.history.HistoryService;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.ConnectionFailureKind;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;import io.github.dbconsole.metadata.TableStructureService;
-import io.github.dbconsole.history.HistoryService;
+import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +42,7 @@ public class SqlExecutionService {
   private final TransactionManager transactions;
   private final TableStructureService tableStructures;
   private final HistoryService history;
+  private final AuditService audit;
   private final DbConsoleProperties properties;
 
   public SqlExecutionService(
@@ -49,6 +52,7 @@ public class SqlExecutionService {
       TransactionManager transactions,
       TableStructureService tableStructures,
       HistoryService history,
+      AuditService audit,
       DbConsoleProperties properties) {
     this.registry = registry;
     this.confirmations = confirmations;
@@ -56,10 +60,11 @@ public class SqlExecutionService {
     this.transactions = transactions;
     this.tableStructures = tableStructures;
     this.history = history;
+    this.audit = audit;
     this.properties = properties;
   }
 
-  public SqlResponses execute(String sessionToken, SqlRequest request) {
+  public SqlResponses execute(String sessionToken, String username, SqlRequest request) {
     if (request.sql().length() > properties.execution().maxSqlLength()) {
       throw new SqlRejectException("SQL_TOO_LONG", "SQL 长度超过上限");
     }
@@ -83,7 +88,17 @@ public class SqlExecutionService {
     }
     // DESC 走对象树同一结构查询（F-06），不执行原生 SQL
     if (statement.kind() == StatementKind.DESCRIBE) {
-      return describeAsQuery(source, request.sql());
+      long startedAt = System.nanoTime();
+      try {
+        SqlResponses result = describeAsQuery(source, request.sql());
+        audit.recordExecution(username, source.id(), request.sql(),
+            (System.nanoTime() - startedAt) / 1_000_000, "SUCCEEDED");
+        return result;
+      } catch (RuntimeException exception) {
+        audit.recordExecution(username, source.id(), request.sql(),
+            (System.nanoTime() - startedAt) / 1_000_000, "FAILED");
+        throw exception;
+      }
     }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
@@ -98,7 +113,7 @@ public class SqlExecutionService {
             confirmations.issue(sessionToken, source.id(), request.sql()));
       }
     }
-    return run(source, request.sql(), statement, sessionToken, transactionConnection);
+    return run(source, request.sql(), statement, sessionToken, username, transactionConnection);
   }
 
   /** DESC 语句转为结构查询结果（F-06）：与对象树共用 TableStructureService。 */
@@ -139,10 +154,23 @@ public class SqlExecutionService {
       String sql,
       SqlStatement statement,
       String sessionToken,
+      String username,
       Connection transactionConnection) {
     long startedAt = System.nanoTime();
     boolean inTransaction = transactionConnection != null;
-    Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
+    Connection connection;
+    if (inTransaction) {
+      connection = transactionConnection;
+    } else {
+      try {
+        connection = openAutoCommit(source);
+      } catch (IllegalStateException exception) {
+        audit.recordExecution(username, source.id(), sql,
+            (System.nanoTime() - startedAt) / 1_000_000, "FAILED");
+        throw exception;
+      }
+    }
+    SqlResponses result = null;
     try {
       try (Statement jdbcStatement = connection.createStatement()) {
         int timeoutSeconds =
@@ -157,19 +185,28 @@ public class SqlExecutionService {
             elapsedMs);
         history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
         if (isResultSet) {
+          SqlResponses.QueryResult queryResult;
           try (ResultSet resultSet = jdbcStatement.getResultSet()) {
-            return QueryResultMapper.map(resultSet, properties.execution(), elapsedMs);
+            queryResult = QueryResultMapper.map(resultSet, properties.execution(), elapsedMs);
           }
+          result = queryResult;
+        } else {
+          int rawCount = jdbcStatement.getUpdateCount();
+          // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
+          Integer affectedRows =
+              statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
+          history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
+          result = new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
+              statement.kind().isImplicitCommitDdl());
         }
-        int rawCount = jdbcStatement.getUpdateCount();
-        // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
-        Integer affectedRows =
-            statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
-        history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
-        return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
-            statement.kind().isImplicitCommitDdl());
+        audit.recordExecution(username, source.id(), sql, elapsedMs, "SUCCEEDED");
       }
     } catch (SQLException exception) {
+      if (result != null) {
+        log.warn("JDBC 语句关闭失败 sourceId={} kind={} sqlState={}",
+            source.id(), statement.kind(), exception.getSQLState());
+        return result;
+      }
       long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
       boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
       ConnectionFailureKind failureKind = ConnectionFailureKind.classify(exception);
@@ -177,11 +214,13 @@ public class SqlExecutionService {
         log.warn(
             "执行结果未知 sourceId={} kind={} sqlState={} elapsedMs={}",
             source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
+        audit.recordExecution(username, source.id(), sql, elapsedMs, "UNKNOWN");
         return new SqlResponses.UnknownOutcome(safeMessage(exception));
       }
       log.warn(
           "SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
           source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
+      audit.recordExecution(username, source.id(), sql, elapsedMs, "FAILED");
       throw new DatabaseExecutionException(safeMessage(exception), exception);
     } finally {
       if (inTransaction) {
@@ -194,6 +233,7 @@ public class SqlExecutionService {
         }
       }
     }
+    return result;
   }
 
   private Connection openAutoCommit(ResolvedDataSource source) {

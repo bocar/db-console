@@ -22,7 +22,8 @@ public class SqlController {
   @PostMapping("/execute")
   public SqlResponses execute(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
+      @RequestAttribute(SessionAuthInterceptor.USERNAME_ATTRIBUTE) String username,
       @Valid @RequestBody SqlRequest request) {
-    return executionService.execute(sessionToken, request);
+    return executionService.execute(sessionToken, username, request);
   }
 }

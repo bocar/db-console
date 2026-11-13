@@ -20,6 +20,9 @@ class ConnectionFailureKindTest {
     ", connect timed out, TIMEOUT",
     ", Connection refused, UNAVAILABLE",
     ", Communications link failure, UNAVAILABLE",
+    "08006, Connection reset, UNAVAILABLE",
+    ", Broken pipe, UNAVAILABLE",
+    ", Connection is closed, UNAVAILABLE",
   })
   @DisplayName("按 SQLState 与消息特征分类连接失败")
   void classifiesFailures(String sqlState, String message, ConnectionFailureKind expected) {

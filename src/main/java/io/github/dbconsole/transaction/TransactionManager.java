@@ -1,7 +1,9 @@
 package io.github.dbconsole.transaction;
 
+import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.auth.SessionService;
 import io.github.dbconsole.jdbc.ConnectionFactory;
+import io.github.dbconsole.jdbc.ConnectionFailureKind;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -31,20 +33,24 @@ public class TransactionManager {
 
   private final ConnectionFactory connections;
   private final SessionService sessions;
+  private final AuditService audit;
   private final Duration idleTimeout;
   private final Clock clock;
   private final Map<String, ActiveTransaction> transactionsByToken = new ConcurrentHashMap<>();
 
   public TransactionManager(
-      ConnectionFactory connections, SessionService sessions, Duration idleTimeout, Clock clock) {
+      ConnectionFactory connections, SessionService sessions, AuditService audit,
+      Duration idleTimeout, Clock clock) {
     this.connections = connections;
     this.sessions = sessions;
+    this.audit = audit;
     this.idleTimeout = idleTimeout;
     this.clock = clock;
   }
 
   /** 开启事务：连接自动提交关闭并按会话持有；已有未结束事务时拒绝。 */
   public void begin(String sessionToken, ResolvedDataSource source) {
+    String username = sessions.authenticate(sessionToken).orElse("unknown");
     transactionsByToken.compute(
         sessionToken,
         (token, existing) -> {
@@ -58,7 +64,7 @@ public class TransactionManager {
             connection.setAutoCommit(false);
             Connection held = connection;
             connection = null;
-            return new ActiveTransaction(source.id(), held, clock.instant());
+            return new ActiveTransaction(source.id(), username, held, clock.instant());
           } catch (SQLException exception) {
             if (connection != null) {
               try {
@@ -74,12 +80,12 @@ public class TransactionManager {
 
   /** 提交整笔事务并释放连接；事务须绑定在指定数据源上。 */
   public void commit(String sessionToken, String sourceId) {
-    finish(sessionToken, sourceId, Connection::commit, "提交");
+    finish(sessionToken, sourceId, Connection::commit, "提交", audit::recordCommit);
   }
 
   /** 回滚整笔事务并释放连接；事务须绑定在指定数据源上。 */
   public void rollback(String sessionToken, String sourceId) {
-    finish(sessionToken, sourceId, Connection::rollback, "回滚");
+    finish(sessionToken, sourceId, Connection::rollback, "回滚", audit::recordRollback);
   }
 
   public boolean hasActive(String sessionToken) {
@@ -149,16 +155,31 @@ public class TransactionManager {
     }
   }
 
-  private void finish(String sessionToken, String sourceId, JdbcAction action, String name) {
+  private void finish(
+      String sessionToken, String sourceId, JdbcAction action, String name,
+      AuditAction auditAction) {
     ActiveTransaction transaction = transactionsByToken.remove(sessionToken);
     if (transaction == null
         || (sourceId != null && !transaction.sourceId().equals(sourceId))) {
       throw new TransactionStateException(
           CODE_NO_TRANSACTION, "该数据源上没有未提交事务");
     }
+    String username = transaction.username();
+    long startedAt = clock.instant().toEpochMilli();
+    boolean actionCompleted = false;
     try (Connection connection = transaction.connection()) {
       action.execute(connection);
+      actionCompleted = true;
+      auditAction.record(username, transaction.sourceId(),
+          clock.instant().toEpochMilli() - startedAt, "SUCCEEDED");
     } catch (SQLException exception) {
+      if (actionCompleted) {
+        log.warn("事务{}后连接关闭失败 sourceId={} sqlState={}",
+            name, transaction.sourceId(), exception.getSQLState());
+        return;
+      }
+      auditAction.record(username, transaction.sourceId(),
+          clock.instant().toEpochMilli() - startedAt, outcomeStatus(exception));
       throw new IllegalStateException(name + "失败：" + exception.getMessage(), exception);
     }
   }
@@ -168,11 +189,32 @@ public class TransactionManager {
     if (transaction == null) {
       return;
     }
+    long startedAt = clock.instant().toEpochMilli();
+    boolean rollbackCompleted = false;
     try (Connection connection = transaction.connection()) {
       connection.rollback();
+      rollbackCompleted = true;
+      audit.recordRollback(transaction.username(), transaction.sourceId(),
+          clock.instant().toEpochMilli() - startedAt, "SUCCEEDED");
     } catch (SQLException exception) {
+      if (rollbackCompleted) {
+        log.warn("事务回滚后连接关闭失败（{}）sourceId={} sqlState={}",
+            reason, transaction.sourceId(), exception.getSQLState());
+        return;
+      }
+      audit.recordRollback(transaction.username(), transaction.sourceId(),
+          clock.instant().toEpochMilli() - startedAt, outcomeStatus(exception));
       log.warn("事务回滚失败（{}）sourceId={}：{}", reason, transaction.sourceId(), exception.getSQLState());
     }
+  }
+
+  private static String outcomeStatus(SQLException exception) {
+    return ConnectionFailureKind.classify(exception).isOutcomeUnknown() ? "UNKNOWN" : "FAILED";
+  }
+
+  @FunctionalInterface
+  private interface AuditAction {
+    void record(String username, String sourceId, long elapsedMs, String status);
   }
 
   @FunctionalInterface

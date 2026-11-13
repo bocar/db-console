@@ -23,6 +23,9 @@ public enum ConnectionFailureKind {
       return TIMEOUT;
     }
     String sqlState = exception.getSQLState();
+    if (sqlState != null && sqlState.startsWith("08")) {
+      return UNAVAILABLE;
+    }
     if (sqlState != null && sqlState.startsWith("28")) {
       return AUTHENTICATION;
     }
@@ -39,7 +42,11 @@ public enum ConnectionFailureKind {
     if (message.contains("timed out") || message.contains("timeout")) {
       return TIMEOUT;
     }
-    if (message.contains("connection refused") || message.contains("communications link failure")) {
+    if (message.contains("connection refused")
+        || message.contains("communications link failure")
+        || message.contains("connection reset")
+        || message.contains("broken pipe")
+        || message.contains("connection is closed")) {
       return UNAVAILABLE;
     }
     return message.isEmpty() ? UNAVAILABLE : UNKNOWN;

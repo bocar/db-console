@@ -7,17 +7,23 @@ import java.time.Instant;
 final class ActiveTransaction {
 
   private final String sourceId;
+  private final String username;
   private final Connection connection;
   private volatile Instant lastActivity;
 
-  ActiveTransaction(String sourceId, Connection connection, Instant startedAt) {
+  ActiveTransaction(String sourceId, String username, Connection connection, Instant startedAt) {
     this.sourceId = sourceId;
+    this.username = username;
     this.connection = connection;
     this.lastActivity = startedAt;
   }
 
   String sourceId() {
     return sourceId;
+  }
+
+  String username() {
+    return username;
   }
 
   Connection connection() {

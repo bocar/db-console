@@ -2,18 +2,23 @@ package io.github.dbconsole.transaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.auth.SessionService;
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +38,9 @@ class TransactionManagerTest {
           Duration.ofHours(8),
           clock,
           event -> {});
-  private final TransactionManager manager = new TransactionManager(factory(), sessions, IDLE, clock);
+  private final AuditService audit = mock(AuditService.class);
+  private final TransactionManager manager =
+      new TransactionManager(factory(), sessions, audit, IDLE, clock);
 
   private ConnectionFactory factory() {
     ConnectionFactory factory = mock(ConnectionFactory.class);
@@ -98,6 +105,18 @@ class TransactionManagerTest {
   }
 
   @Test
+  @DisplayName("提交审计记录真实操作者、数据源与成功状态")
+  void commitAuditsAuthenticatedOperator() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+
+    manager.commit(token, "mysql-work-note");
+
+    verify(audit)
+        .recordCommit(eq("admin"), eq("mysql-work-note"), anyLong(), eq("SUCCEEDED"));
+  }
+
+  @Test
   @DisplayName("回滚撤销未提交变更并释放连接")
   void rollbackClosesTransaction() throws Exception {
     String token = loginSession();
@@ -108,6 +127,48 @@ class TransactionManagerTest {
     verify(connection).rollback();
     verify(connection).close();
     assertThat(manager.hasActive(token)).isFalse();
+  }
+
+  @Test
+  @DisplayName("提交后连接关闭失败不产生相反或重复的审计")
+  void commitCloseFailureKeepsSingleSucceededAudit() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+    doThrow(new SQLException("close failed")).when(connection).close();
+
+    manager.commit(token, "mysql-work-note");
+
+    verify(audit)
+        .recordCommit(eq("admin"), eq("mysql-work-note"), anyLong(), eq("SUCCEEDED"));
+    verifyNoMoreInteractions(audit);
+    assertThat(manager.hasActive(token)).isFalse();
+  }
+
+  @Test
+  @DisplayName("提交超时且结果无法确认时审计记录 UNKNOWN")
+  void commitTimeoutAuditsUnknownOutcome() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+    doThrow(new SQLTimeoutException("timeout")).when(connection).commit();
+
+    assertThatThrownBy(() -> manager.commit(token, "mysql-work-note"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("提交失败");
+
+    verify(audit)
+        .recordCommit(eq("admin"), eq("mysql-work-note"), anyLong(), eq("UNKNOWN"));
+  }
+
+  @Test
+  @DisplayName("回滚审计记录真实操作者、数据源与成功状态")
+  void rollbackAuditsAuthenticatedOperator() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+
+    manager.rollback(token, "mysql-work-note");
+
+    verify(audit)
+        .recordRollback(eq("admin"), eq("mysql-work-note"), anyLong(), eq("SUCCEEDED"));
   }
 
   @Test
@@ -189,6 +250,33 @@ class TransactionManagerTest {
 
     verify(connection).rollback();
     verify(connection).close();
+  }
+
+  @Test
+  @DisplayName("会话结束自动回滚也记录原操作者与成功状态")
+  void sessionEndRollbackAuditsOriginalOperator() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+    sessions.logout(token);
+
+    manager.onSessionEnd(token);
+
+    verify(audit)
+        .recordRollback(eq("admin"), eq("mysql-work-note"), anyLong(), eq("SUCCEEDED"));
+  }
+
+  @Test
+  @DisplayName("自动回滚后连接关闭失败不产生相反或重复的审计")
+  void automaticRollbackCloseFailureKeepsSingleSucceededAudit() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+    doThrow(new SQLException("close failed")).when(connection).close();
+
+    manager.onSessionEnd(token);
+
+    verify(audit)
+        .recordRollback(eq("admin"), eq("mysql-work-note"), anyLong(), eq("SUCCEEDED"));
+    verifyNoMoreInteractions(audit);
   }
 
   @Test
