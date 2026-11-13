@@ -47,10 +47,8 @@ final class SqlTokenizer {
       }
       if (current == '-' && index + 1 < length && sql.charAt(index + 1) == '-') {
         index = consumeLineComment(sql, index, tokens);
-      } else if (current == '#'
-          && hashLineComments
-          && index + 1 < length
-          && sql.charAt(index + 1) != '_') {
+      } else if (current == '#' && hashLineComments) {
+        // MySQL 系的 # 一律是行注释，直至行尾（DM8 不识别 # 注释）
         index = consumeLineComment(sql, index, tokens);
       } else if (current == '/' && index + 1 < length && sql.charAt(index + 1) == '*') {
         index = consumeBlockComment(sql, index, tokens);

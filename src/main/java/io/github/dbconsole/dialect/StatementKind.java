@@ -13,7 +13,8 @@ public enum StatementKind {
   CREATE_TABLE(false, false, true),
   ALTER_TABLE(false, false, true),
   DROP_TABLE(false, false, true),
-  COMMENT_ON(false, false, false),
+  /** DM8/Oracle 系的 COMMENT ON 属 DDL，执行即隐式提交（F-07/F-16）。 */
+  COMMENT_ON(false, false, true),
   OTHER(false, false, false);
 
   private final boolean query;

@@ -2,14 +2,28 @@ package io.github.dbconsole.dialect;
 
 import io.github.dbconsole.config.DbConsoleProperties.CompatibilityMode;
 import io.github.dbconsole.config.DbConsoleProperties.DatabaseType;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 方言语句分析器（ADR-0001）：单条语句边界判定（字符串、引用标识符与注释中的分号不切分，
  * 允许单个末尾分号）、操作粗分类（含 WITH 的实际操作）与最外层 WHERE 检测。
  * 纯函数，安全兜底由 JDBC 单语句执行与数据库账号权限承担。
+ *
+ * <p>未闭合的字符串或引用标识符会被吞到输入末尾——结果是整段仍算一条语句，
+ * 语法错误交由数据库拒绝（fail-closed，语法兜底不在本层）。
  */
 public final class SqlStatementAnalyzer {
+
+  private static final String ONLY_ONE_STATEMENT_MESSAGE = "一次只能执行一条语句";
+
+  /** WITH 头部扫描的状态位：期待 CTE 名 / 期待 AS / 组结束位。 */
+  private enum CtePosition {
+    NAME,
+    AS_KEYWORD,
+    AFTER_GROUP
+  }
 
   private final SqlTokenizer tokenizer;
 
@@ -40,14 +54,14 @@ public final class SqlStatementAnalyzer {
     // 只允许单个末尾分号：出现两个及以上分号即视为多语句（F-04）
     if (semicolonCount > 1) {
       return new RejectedSql(
-          SqlAnalysisResult.RejectionReason.MULTIPLE_STATEMENTS, "一次只能执行一条语句");
+          SqlAnalysisResult.RejectionReason.MULTIPLE_STATEMENTS, ONLY_ONE_STATEMENT_MESSAGE);
     }
     List<List<SqlTokenizer.Token>> statements = splitBySemicolon(significant);
     List<List<SqlTokenizer.Token>> nonEmpty =
         statements.stream().filter(part -> !part.isEmpty()).toList();
     if (nonEmpty.size() > 1) {
       return new RejectedSql(
-          SqlAnalysisResult.RejectionReason.MULTIPLE_STATEMENTS, "一次只能执行一条语句");
+          SqlAnalysisResult.RejectionReason.MULTIPLE_STATEMENTS, ONLY_ONE_STATEMENT_MESSAGE);
     }
     if (nonEmpty.isEmpty()) {
       return new RejectedSql(
@@ -55,16 +69,18 @@ public final class SqlStatementAnalyzer {
     }
     List<SqlTokenizer.Token> statement = nonEmpty.get(0);
     int mainVerbIndex = mainVerbIndex(statement);
-    return new SqlStatement(classify(statement, mainVerbIndex), hasOuterWhere(statement, mainVerbIndex));
+    StatementKind kind = classify(statement, mainVerbIndex);
+    boolean hasOuterWhere = hasOuterWhere(statement, mainVerbIndex);
+    return new SqlStatement(kind, hasOuterWhere);
   }
 
   private List<List<SqlTokenizer.Token>> splitBySemicolon(List<SqlTokenizer.Token> tokens) {
-    List<List<SqlTokenizer.Token>> parts = new java.util.ArrayList<>();
-    List<SqlTokenizer.Token> current = new java.util.ArrayList<>();
+    List<List<SqlTokenizer.Token>> parts = new ArrayList<>();
+    List<SqlTokenizer.Token> current = new ArrayList<>();
     for (SqlTokenizer.Token token : tokens) {
       if (token.type() == SqlTokenizer.TokenType.SEMICOLON) {
         parts.add(current);
-        current = new java.util.ArrayList<>();
+        current = new ArrayList<>();
       } else {
         current.add(token);
       }
@@ -73,32 +89,35 @@ public final class SqlStatementAnalyzer {
     return parts;
   }
 
-  /** 主句动词下标：WITH 语句跳过 CTE 定义，普通语句为 0。 */
+  /**
+   * 主句动词下标：WITH 语句跳过 CTE 定义（名称 [列清单] AS (…) 的重复序列，
+   * 含 WITH RECURSIVE 形式——RECURSIVE 被名称位容忍），普通语句为 0。
+   */
   private int mainVerbIndex(List<SqlTokenizer.Token> statement) {
     SqlTokenizer.Token first = statement.get(0);
     if (!first.isWord("WITH")) {
       return 0;
     }
     int index = 1;
-    int state = 0; // 0=名字位 1=AS 位 2=组后（COMMA 回 0，否则主句）
+    CtePosition position = CtePosition.NAME;
     int depth = 0;
     while (index < statement.size()) {
       SqlTokenizer.Token token = statement.get(index);
-      switch (token.type()) {
-        case LPAREN -> depth++;
-        case RPAREN -> depth = Math.max(0, depth - 1);
-        default -> {
-          // 括号内的 token 不参与 CTE 结构判定
-        }
+      if (token.type() == SqlTokenizer.TokenType.LPAREN) {
+        depth++;
+      } else if (token.type() == SqlTokenizer.TokenType.RPAREN) {
+        depth = Math.max(0, depth - 1);
       }
       if (depth == 0) {
-        if (state == 0 && token.type() == SqlTokenizer.TokenType.WORD) {
-          state = 1;
-        } else if (state == 1 && token.isWord("AS")) {
-          state = 2;
-        } else if (state == 2 && token.type() == SqlTokenizer.TokenType.COMMA) {
-          state = 0;
-        } else if (state == 2 && token.type() == SqlTokenizer.TokenType.WORD) {
+        if (position == CtePosition.NAME && token.type() == SqlTokenizer.TokenType.WORD) {
+          position = CtePosition.AS_KEYWORD;
+        } else if (position == CtePosition.AS_KEYWORD && token.isWord("AS")) {
+          position = CtePosition.AFTER_GROUP;
+        } else if (position == CtePosition.AFTER_GROUP
+            && token.type() == SqlTokenizer.TokenType.COMMA) {
+          position = CtePosition.NAME;
+        } else if (position == CtePosition.AFTER_GROUP
+            && token.type() == SqlTokenizer.TokenType.WORD) {
           return index;
         }
       }
@@ -130,13 +149,17 @@ public final class SqlStatementAnalyzer {
     }
     if (verb.isWord("CREATE") || verb.isWord("ALTER") || verb.isWord("DROP")) {
       SqlTokenizer.Token next = wordAfter(statement, mainVerbIndex);
-      return next != null && next.isWord("TABLE")
-          ? switch (verb.text().toUpperCase(java.util.Locale.ROOT)) {
-            case "CREATE" -> StatementKind.CREATE_TABLE;
-            case "ALTER" -> StatementKind.ALTER_TABLE;
-            default -> StatementKind.DROP_TABLE;
-          }
-          : StatementKind.OTHER;
+      if (next == null || !next.isWord("TABLE")) {
+        return StatementKind.OTHER;
+      }
+      String text = verb.text().toUpperCase(Locale.ROOT);
+      if ("CREATE".equals(text)) {
+        return StatementKind.CREATE_TABLE;
+      }
+      if ("ALTER".equals(text)) {
+        return StatementKind.ALTER_TABLE;
+      }
+      return StatementKind.DROP_TABLE;
     }
     if (verb.isWord("COMMENT")) {
       SqlTokenizer.Token next = wordAfter(statement, mainVerbIndex);
@@ -150,17 +173,12 @@ public final class SqlStatementAnalyzer {
     int depth = 0;
     for (int index = mainVerbIndex; index < statement.size(); index++) {
       SqlTokenizer.Token token = statement.get(index);
-      switch (token.type()) {
-        case LPAREN -> depth++;
-        case RPAREN -> depth = Math.max(0, depth - 1);
-        case WORD -> {
-          if (depth == 0 && token.isWord("WHERE")) {
-            return true;
-          }
-        }
-        default -> {
-          // 其他 token 不影响深度与判定
-        }
+      if (token.type() == SqlTokenizer.TokenType.LPAREN) {
+        depth++;
+      } else if (token.type() == SqlTokenizer.TokenType.RPAREN) {
+        depth = Math.max(0, depth - 1);
+      } else if (depth == 0 && token.isWord("WHERE")) {
+        return true;
       }
     }
     return false;

@@ -52,6 +52,8 @@ class SqlStatementAnalyzerTest {
     @ValueSource(strings = {
         "SELECT ';' AS a FROM t",
         "SELECT 'it''s; fine' FROM t",
+        "SELECT 'unterminated ; tail",
+        "SELECT 1 #_weird; name",
         "SELECT \"semi;colon\" FROM t",
         "SELECT `odd;name` FROM t",
         "SELECT 1 -- trailing; comment",
@@ -74,6 +76,13 @@ class SqlStatementAnalyzerTest {
     void hashCommentIsMysqlOnly() {
       assertThat(MYSQL.analyze("SELECT 1 # hash; comment")).isInstanceOf(SqlStatement.class);
       assertThat(DM8.analyze("SELECT 1 # hash; comment")).isInstanceOf(RejectedSql.class);
+    }
+
+    @Test
+    @DisplayName("反斜杠转义仅 MySQL 系生效：同一语句 DM8 视为多语句")
+    void backslashEscapeIsMysqlOnly() {
+      assertThat(MYSQL.analyze("SELECT 'it\\'s; fine'")).isInstanceOf(SqlStatement.class);
+      assertThat(DM8.analyze("SELECT 'it\\'s; fine'")).isInstanceOf(RejectedSql.class);
     }
   }
 
@@ -114,6 +123,8 @@ class SqlStatementAnalyzerTest {
         "WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c | INSERT",
         "WITH a AS (SELECT 1), b AS (SELECT 2) UPDATE t SET x = 1 | UPDATE",
         "with c as (select 1) delete from t | DELETE",
+        "WITH RECURSIVE r AS (SELECT 1) INSERT INTO t SELECT * FROM r | INSERT",
+        "WITH c (a, b) AS (SELECT 1, 2) DELETE FROM t | DELETE",
     })
     @DisplayName("WITH 语句按主句动词分类（含多 CTE）")
     void classifiesWithByMainVerb(String sql, StatementKind expected) {
@@ -174,7 +185,7 @@ class SqlStatementAnalyzerTest {
       assertThat(StatementKind.CREATE_TABLE.isImplicitCommitDdl()).isTrue();
       assertThat(StatementKind.ALTER_TABLE.isImplicitCommitDdl()).isTrue();
       assertThat(StatementKind.DROP_TABLE.isImplicitCommitDdl()).isTrue();
-      assertThat(StatementKind.COMMENT_ON.isImplicitCommitDdl()).isFalse();
+      assertThat(StatementKind.COMMENT_ON.isImplicitCommitDdl()).isTrue();
       assertThat(StatementKind.SELECT.isQuery()).isTrue();
       assertThat(StatementKind.DESCRIBE.isQuery()).isTrue();
     }
