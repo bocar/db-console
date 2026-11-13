@@ -6,5 +6,10 @@ target
 node_modules
 dist
 src/main/webapp/node
+src/main/webapp/node_modules
+src/main/webapp/dist
 *.log
 .DS_Store
+audit
+.playwright-mcp
+config/local
