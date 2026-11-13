@@ -2,6 +2,7 @@ package io.github.dbconsole.metadata;
 
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.UnknownDataSourceException;
+import io.github.dbconsole.jdbc.UnknownDataSourceException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,16 +28,11 @@ public class MetadataController {
 
   @GetMapping("/{id}/tables")
   public List<TableStructure> listTables(@PathVariable String id) {
-    return service.listTables(registry.resolve(id));
+    return service.listTables(id);
   }
 
   @GetMapping("/{id}/tables/{table}/structure")
   public TableStructure tableStructure(@PathVariable String id, @PathVariable String table) {
-    TableStructure structure = service.tableStructure(registry.resolve(id), table);
-    if (structure == null) {
-      throw new ResponseStatusException(
-          HttpStatus.NOT_FOUND, "表 " + table + " 不存在或无权访问");
-    }
-    return structure;
+    return service.tableStructure(id, table);
   }
 }

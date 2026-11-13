@@ -20,6 +20,7 @@ export function useObjectTree() {
     const generation = ++loadGeneration
     loading.value = true
     try {
+      currentSourceId = sourceId
       const loaded = await api.metadata.tables(sourceId)
       if (generation !== loadGeneration) return
       tables.value = loaded
@@ -27,6 +28,8 @@ export function useObjectTree() {
       if (!tables.value.some((table) => table.name === selectedTableName.value)) {
         selectedTableName.value = tables.value[0]?.name ?? ''
       }
+      // 选中表时补充索引/外键完整结构（列表接口返回简要结构）
+      await refreshStructureDetail(sourceId)
     } catch (error) {
       if (generation !== loadGeneration) return
       tables.value = []
@@ -41,6 +44,26 @@ export function useObjectTree() {
 
   function selectTable(name: string): void {
     selectedTableName.value = name
+    // 切表时异步补全结构（索引/外键）
+    const sourceId = currentSourceId
+    if (sourceId) void refreshStructureDetail(sourceId)
+  }
+
+  let currentSourceId = ''
+
+  async function refreshStructureDetail(sourceId: string): Promise<void> {
+    const tableName = selectedTableName.value
+    if (!tableName) return
+    try {
+      const detail = await api.metadata.tableStructure(sourceId, tableName)
+      // 原位更新，保持选中
+      const index = tables.value.findIndex((table) => table.name === tableName)
+      if (index >= 0) {
+        tables.value = tables.value.map((table, i) => (i === index ? detail : table))
+      }
+    } catch {
+      // 结构补全失败保持列表数据
+    }
   }
 
   function reset(): void {

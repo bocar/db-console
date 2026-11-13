@@ -15,6 +15,7 @@ import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -101,12 +102,13 @@ public class SqlExecutionService {
     String tableName =
         sql.trim()
             .replaceFirst("(?i)^(DESC|DESCRIBE)\\s+", "")
-            .replaceAll("[`\"';]", "")
+            .replaceAll("^[`\"']|[`\"']$", "")
+            .replaceAll(";$", "")
             .trim();
     if (tableName.isEmpty()) {
       throw new SqlRejectException("INVALID_SQL", "DESC 需要指定表名");
     }
-    TableStructure structure = tableStructures.tableStructure(source, tableName);
+    TableStructure structure = tableStructures.tableStructure(source.id(), tableName);
     if (structure == null) {
       throw new DatabaseExecutionException("表 " + tableName + " 不存在或无权访问", null);
     }
@@ -122,7 +124,7 @@ public class SqlExecutionService {
     for (TableStructure.ColumnDefinition column : structure.columns()) {
       // Arrays.asList 允许 null（defaultValue 可为 null），List.of 不允许
       rows.add(
-          java.util.Arrays.asList(
+          Arrays.asList(
               column.name(),
               column.type(),
               column.nullable() ? "YES" : "NO",
