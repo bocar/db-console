@@ -15,7 +15,7 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
       list: async () => [],
       testConnection: async () => ({ ok: true, kind: 'NONE', message: '连接正常' }),
     },
-    metadata: { tables: async () => [], tableStructure: async () => { throw new Error('未覆盖') } },
+    metadata: { tables: async () => [], tableStructure: async () => { throw new Error('未覆盖') }, commentStatement: async () => ({ sql: '' }) },
     sql: {
       execute: async () => {
         throw new Error('fakeApiClient: sql.execute 未在用例中覆盖')

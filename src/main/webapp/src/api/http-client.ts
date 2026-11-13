@@ -113,6 +113,13 @@ export class HttpApiClient implements ApiClient {
       this.request<TableDefinition>(
         'GET',
         `/api/data-sources/${encodeURIComponent(sourceId)}/tables/${encodeURIComponent(table)}/structure`),
+    commentStatement: (
+      sourceId: string, tableName: string, columnName: string, comment: string,
+    ): Promise<{ sql: string }> =>
+      this.request<{ sql: string }>(
+        'POST',
+        `/api/data-sources/${encodeURIComponent(sourceId)}/comment-statement`,
+        { tableName, columnName, comment }),
   }
 
   sql = {

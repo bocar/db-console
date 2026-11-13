@@ -139,6 +139,11 @@ export class MockApiClient implements ApiClient {
       if (!found) throw new ApiClientError('REQUEST_FAILED', `表 ${table} 不存在`, 404)
       return { ...found }
     },
+    commentStatement: async (
+      _sourceId: string, tableName: string, columnName: string, comment: string,
+    ): Promise<{ sql: string }> => {
+      return { sql: `ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} VARCHAR(64) COMMENT '${comment}'` }
+    },
   }
 
   sql = {
