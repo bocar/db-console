@@ -15,6 +15,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
@@ -251,8 +255,8 @@ class SqlExecutionMySqlIntegrationTest {
         MvcResult result = mockMvc.perform(post("/api/sql/page")
                 .cookie(session)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"sourceId\":\"mysql-work-note\",\"sql\":%s,"
-                    + "\"page\":%d,\"pageSize\":10}".formatted(jsonText(sql), page)))
+                .content(("{\"sourceId\":\"mysql-work-note\",\"sql\":%s,"
+                    + "\"page\":%d,\"pageSize\":10}").formatted(jsonText(sql), page)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.page").value(page))
             .andExpect(jsonPath("$.totalRows").value(25))
@@ -277,6 +281,37 @@ class SqlExecutionMySqlIntegrationTest {
           Statement statement = connection.createStatement()) {
         statement.execute("DROP TABLE IF EXISTS " + table);
       }
+    }
+  }
+
+  @Test
+  void realDriverLongQueryIsCancellable() throws Exception {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<MvcResult> executing =
+          executor.submit(
+              () ->
+                  mockMvc
+                      .perform(
+                          post("/api/sql/execute")
+                              .cookie(session)
+                              .contentType(MediaType.APPLICATION_JSON)
+                              .content(
+                                  "{\"sourceId\":\"mysql-work-note\",\"sql\":%s}"
+                                      .formatted(jsonText("SELECT SLEEP(15)"))))
+                      .andReturn());
+      // 等待语句进入驱动执行（挂起在 SLEEP 上）再取消
+      Thread.sleep(1_000);
+      mockMvc
+          .perform(post("/api/sql/mysql-work-note/cancel").cookie(session))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.kind").value("CANCELLED"));
+
+      MvcResult done = executing.get(20, TimeUnit.SECONDS);
+      Object outcome = JsonPath.read(body(done), "$.kind");
+      assertThat(outcome).isEqualTo("CANCELLED");
+    } finally {
+      executor.shutdownNow();
     }
   }
 }
