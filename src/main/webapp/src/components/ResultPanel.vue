@@ -79,7 +79,7 @@ const exportCsv = () => {
   link.download = `query-result-page-${props.page}.csv`
   link.click()
   URL.revokeObjectURL(url)
-  emit('notify', `已导出当前加载的 ${props.rows.length} 行`)
+  emit('notify', props.truncated ? `已导出当前加载的 ${props.rows.length} 行（结果超过单次上限，已截断）` : `已导出当前加载的 ${props.rows.length} 行`)
 }
 
 const changePage = (event: Event) => {
