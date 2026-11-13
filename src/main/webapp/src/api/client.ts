@@ -26,6 +26,7 @@ export interface ApiClient {
   }
   metadata: {
     tables(sourceId: string): Promise<TableDefinition[]>
+    tableStructure(sourceId: string, table: string): Promise<TableDefinition>
   }
   sql: {
     execute(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired>

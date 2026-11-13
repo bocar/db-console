@@ -133,6 +133,12 @@ export class MockApiClient implements ApiClient {
       this.requireSource(sourceId)
       return [...this.tables]
     },
+    tableStructure: async (sourceId: string, table: string): Promise<TableDefinition> => {
+      this.requireSource(sourceId)
+      const found = this.tables.find((item) => item.name === table)
+      if (!found) throw new ApiClientError('REQUEST_FAILED', `表 ${table} 不存在`, 404)
+      return { ...found }
+    },
   }
 
   sql = {

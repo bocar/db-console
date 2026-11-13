@@ -9,9 +9,13 @@ import io.github.dbconsole.dialect.StatementKind;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
+import io.github.dbconsole.metadata.TableStructure;
+import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.List;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -32,6 +36,7 @@ public class SqlExecutionService {
   private final ConfirmationService confirmations;
   private final ConnectionFactory connections;
   private final TransactionManager transactions;
+  private final TableStructureService tableStructures;
   private final DbConsoleProperties properties;
 
   public SqlExecutionService(
@@ -39,11 +44,13 @@ public class SqlExecutionService {
       ConfirmationService confirmations,
       ConnectionFactory connections,
       TransactionManager transactions,
+      TableStructureService tableStructures,
       DbConsoleProperties properties) {
     this.registry = registry;
     this.confirmations = confirmations;
     this.connections = connections;
     this.transactions = transactions;
+    this.tableStructures = tableStructures;
     this.properties = properties;
   }
 
@@ -69,6 +76,10 @@ public class SqlExecutionService {
           TransactionManager.CODE_TRANSACTION_OPEN,
           "请先提交或回滚当前事务，再执行隐式提交 DDL");
     }
+    // DESC 走对象树同一结构查询（F-06），不执行原生 SQL
+    if (statement.kind() == StatementKind.DESCRIBE) {
+      return describeAsQuery(source, request.sql());
+    }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
     if (requirement != ConfirmationDecision.Requirement.NOT_REQUIRED) {
@@ -83,6 +94,43 @@ public class SqlExecutionService {
       }
     }
     return run(source, request.sql(), statement, sessionToken, transactionConnection);
+  }
+
+  /** DESC 语句转为结构查询结果（F-06）：与对象树共用 TableStructureService。 */
+  private SqlResponses describeAsQuery(ResolvedDataSource source, String sql) {
+    String tableName =
+        sql.trim()
+            .replaceFirst("(?i)^(DESC|DESCRIBE)\\s+", "")
+            .replaceAll("[`\"';]", "")
+            .trim();
+    if (tableName.isEmpty()) {
+      throw new SqlRejectException("INVALID_SQL", "DESC 需要指定表名");
+    }
+    TableStructure structure = tableStructures.tableStructure(source, tableName);
+    if (structure == null) {
+      throw new DatabaseExecutionException("表 " + tableName + " 不存在或无权访问", null);
+    }
+    List<SqlResponses.QueryColumn> columns =
+        List.of(
+            new SqlResponses.QueryColumn("COLUMN_NAME", "VARCHAR"),
+            new SqlResponses.QueryColumn("TYPE", "VARCHAR"),
+            new SqlResponses.QueryColumn("NULLABLE", "VARCHAR"),
+            new SqlResponses.QueryColumn("DEFAULT_VALUE", "VARCHAR"),
+            new SqlResponses.QueryColumn("KEY", "VARCHAR"),
+            new SqlResponses.QueryColumn("COMMENT", "VARCHAR"));
+    List<List<Object>> rows = new ArrayList<>();
+    for (TableStructure.ColumnDefinition column : structure.columns()) {
+      // Arrays.asList 允许 null（defaultValue 可为 null），List.of 不允许
+      rows.add(
+          java.util.Arrays.asList(
+              column.name(),
+              column.type(),
+              column.nullable() ? "YES" : "NO",
+              column.defaultValue(),
+              column.primaryKey() ? "PRI" : "",
+              column.comment()));
+    }
+    return new SqlResponses.QueryResult(columns, rows, 0, false);
   }
 
   private SqlResponses run(

@@ -109,6 +109,10 @@ export class HttpApiClient implements ApiClient {
   metadata = {
     tables: (sourceId: string): Promise<TableDefinition[]> =>
       this.request<TableDefinition[]>(`GET`, `/api/data-sources/${encodeURIComponent(sourceId)}/tables`),
+    tableStructure: (sourceId: string, table: string): Promise<TableDefinition> =>
+      this.request<TableDefinition>(
+        'GET',
+        `/api/data-sources/${encodeURIComponent(sourceId)}/tables/${encodeURIComponent(table)}/structure`),
   }
 
   sql = {

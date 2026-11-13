@@ -25,10 +25,25 @@ export interface ColumnDefinition {
   comment: string
 }
 
+export interface IndexDefinition {
+  name: string
+  unique: boolean
+  columns: string[]
+}
+
+export interface ForeignKeyDefinition {
+  name: string
+  columns: string[]
+  referencedTable: string
+  referencedColumns: string[]
+}
+
 export interface TableDefinition {
   name: string
   comment: string
   columns: ColumnDefinition[]
+  indexes?: IndexDefinition[]
+  foreignKeys?: ForeignKeyDefinition[]
 }
 
 export interface QueryColumn {
