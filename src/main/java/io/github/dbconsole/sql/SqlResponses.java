@@ -68,5 +68,13 @@ public sealed interface SqlResponses {
     }
   }
 
+  /** 查询已取消（F-14）：本会话取消成功后的查询终态，结果不保留。 */
+  record Cancelled(String kind, long elapsedMs) implements SqlResponses {
+
+    public Cancelled(long elapsedMs) {
+      this("CANCELLED", elapsedMs);
+    }
+  }
+
   record QueryColumn(String name, String type) {}
 }

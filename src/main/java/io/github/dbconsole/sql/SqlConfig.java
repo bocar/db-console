@@ -20,17 +20,23 @@ public class SqlConfig {
   }
 
   @Bean
+  public RunningQueryRegistry runningQueryRegistry(DbConsoleProperties properties) {
+    return new RunningQueryRegistry(properties.execution().maxConcurrency());
+  }
+
+  @Bean
   public SqlExecutionService sqlExecutionService(
       DataSourceRegistry registry,
       ConfirmationService confirmations,
       ConnectionFactory connections,
+      RunningQueryRegistry runningQueries,
       TransactionManager transactions,
       TableStructureService tableStructures,
       HistoryService history,
       AuditService audit,
       DbConsoleProperties properties) {
     return new SqlExecutionService(
-        registry, confirmations, connections, transactions, tableStructures, history,
-        audit, properties);
+        registry, confirmations, connections, runningQueries, transactions, tableStructures,
+        history, audit, properties);
   }
 }

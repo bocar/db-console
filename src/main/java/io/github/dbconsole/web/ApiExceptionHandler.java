@@ -4,6 +4,7 @@ import io.github.dbconsole.jdbc.UnknownDataSourceException;
 import io.github.dbconsole.metadata.MetadataException;
 import io.github.dbconsole.metadata.TableNotFoundException;
 import io.github.dbconsole.sql.DatabaseExecutionException;
+import io.github.dbconsole.sql.QueryTimeoutException;
 import io.github.dbconsole.sql.SqlRejectException;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
@@ -49,6 +50,13 @@ public class ApiExceptionHandler {
   @ExceptionHandler(SqlRejectException.class)
   public ResponseEntity<ApiError> handleSqlRejection(SqlRejectException ex) {
     return ResponseEntity.unprocessableEntity().body(new ApiError(ex.code(), ex.getMessage()));
+  }
+
+  @ExceptionHandler(QueryTimeoutException.class)
+  public ResponseEntity<ApiError> handleQueryTimeout(QueryTimeoutException ex) {
+    log.warn("查询执行超时：已按配置时限中止");
+    return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT)
+        .body(new ApiError("QUERY_TIMEOUT", ex.getMessage()));
   }
 
   @ExceptionHandler(TransactionStateException.class)

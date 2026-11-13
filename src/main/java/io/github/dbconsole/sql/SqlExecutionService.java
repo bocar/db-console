@@ -20,6 +20,7 @@ import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,6 +42,7 @@ public class SqlExecutionService {
   private final DataSourceRegistry registry;
   private final ConfirmationService confirmations;
   private final ConnectionFactory connections;
+  private final RunningQueryRegistry runningQueries;
   private final TransactionManager transactions;
   private final TableStructureService tableStructures;
   private final HistoryService history;
@@ -51,6 +53,7 @@ public class SqlExecutionService {
       DataSourceRegistry registry,
       ConfirmationService confirmations,
       ConnectionFactory connections,
+      RunningQueryRegistry runningQueries,
       TransactionManager transactions,
       TableStructureService tableStructures,
       HistoryService history,
@@ -59,6 +62,7 @@ public class SqlExecutionService {
     this.registry = registry;
     this.confirmations = confirmations;
     this.connections = connections;
+    this.runningQueries = runningQueries;
     this.transactions = transactions;
     this.tableStructures = tableStructures;
     this.history = history;
@@ -88,15 +92,16 @@ public class SqlExecutionService {
           TransactionManager.CODE_TRANSACTION_OPEN,
           "请先提交或回滚当前事务，再执行隐式提交 DDL");
     }
-    // DESC 走对象树同一结构查询（F-06），不执行原生 SQL
+    // DESC 走对象树同一结构查询（F-06），不执行原生 SQL，不占执行并发额度
     if (statement.kind() == StatementKind.DESCRIBE) {
       return auditExecution(source, request.sql(), username,
           () -> describeAsQuery(source, request.sql()));
     }
     if (statement.kind() == StatementKind.SELECT) {
+      RunningQuery running = runningQueries.register(sessionToken, source.id());
       return auditExecution(source, request.sql(), username,
           () -> queryPage(source, request.sql(), 1, properties.execution().defaultPageSize(),
-              sessionToken, transactionConnection, true, analyzer));
+              sessionToken, transactionConnection, true, analyzer, running));
     }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
@@ -111,8 +116,15 @@ public class SqlExecutionService {
             confirmations.issue(sessionToken, source.id(), request.sql()));
       }
     }
+    RunningQuery running = runningQueries.register(sessionToken, source.id());
     return auditExecution(source, request.sql(), username,
-        () -> run(source, request.sql(), statement, sessionToken, transactionConnection));
+        () -> run(source, request.sql(), statement, sessionToken, transactionConnection, running));
+  }
+
+  /** 取消当前登录会话在本数据源运行中的查询（F-14）；其他会话的查询不可见。 */
+  public CancelResponse cancelRunningQuery(String sessionToken, String sourceId) {
+    registry.resolve(sourceId);
+    return runningQueries.cancel(sessionToken, sourceId);
   }
 
   public SqlResponses page(String sessionToken, String username, SqlPageRequest request) {
@@ -134,9 +146,10 @@ public class SqlExecutionService {
       throw new SqlRejectException("PAGINATION_NOT_ALLOWED", "只有只读查询支持分页");
     }
     Connection transactionConnection = transactions.connectionFor(sessionToken, source.id());
+    RunningQuery running = runningQueries.register(sessionToken, source.id());
     return auditExecution(source, request.sql(), username,
         () -> queryPage(source, request.sql(), request.page(), request.pageSize(),
-            sessionToken, transactionConnection, false, analyzer));
+            sessionToken, transactionConnection, false, analyzer, running));
   }
 
   private SqlResponses auditExecution(
@@ -150,7 +163,15 @@ public class SqlExecutionService {
       audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), "FAILED");
       throw exception;
     }
-    String status = result instanceof SqlResponses.UnknownOutcome ? "UNKNOWN" : "SUCCEEDED";
+    String status;
+    if (result instanceof SqlResponses.Cancelled) {
+      // 查询被本会话取消（F-14）：终态为 CANCELLED，不误记为 FAILED
+      status = "CANCELLED";
+    } else if (result instanceof SqlResponses.UnknownOutcome) {
+      status = "UNKNOWN";
+    } else {
+      status = "SUCCEEDED";
+    }
     audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), status);
     return result;
   }
@@ -200,7 +221,8 @@ public class SqlExecutionService {
       String sessionToken,
       Connection transactionConnection,
       boolean recordHistory,
-      SqlStatementAnalyzer analyzer) {
+      SqlStatementAnalyzer analyzer,
+      RunningQuery running) {
     long startedAt = System.nanoTime();
     String statementSql = analyzer.removeTerminator(sql);
     boolean inTransaction = transactionConnection != null;
@@ -213,6 +235,7 @@ public class SqlExecutionService {
           : statementSql;
       String pagedSql = PaginationSql.appendPageClause(baseSql, pageSize + 1, offset);
       try (Statement jdbcStatement = connection.createStatement()) {
+        runningQueries.bindStatement(running, jdbcStatement);
         jdbcStatement.setQueryTimeout(timeoutSeconds());
         if (!jdbcStatement.execute(pagedSql)) {
           throw new SQLException("查询未返回结果集");
@@ -245,10 +268,20 @@ public class SqlExecutionService {
         return result;
       }
       long elapsedMs = elapsedMillisSince(startedAt);
+      if (runningQueries.isCancelRequested(running)) {
+        log.info("查询已取消 sourceId={} elapsedMs={}", source.id(), elapsedMs);
+        return new SqlResponses.Cancelled(elapsedMs);
+      }
+      if (exception instanceof SQLTimeoutException) {
+        log.warn("查询执行超时 sourceId={} sqlState={} elapsedMs={}",
+            source.id(), exception.getSQLState(), elapsedMs);
+        throw new QueryTimeoutException();
+      }
       log.warn("SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
           source.id(), StatementKind.SELECT, exception.getSQLState(), elapsedMs);
       throw new DatabaseExecutionException(safeMessage(exception), exception);
     } finally {
+      runningQueries.complete(running);
       if (inTransaction) {
         transactions.touch(sessionToken);
       } else {
@@ -283,13 +316,15 @@ public class SqlExecutionService {
       String sql,
       SqlStatement statement,
       String sessionToken,
-      Connection transactionConnection) {
+      Connection transactionConnection,
+      RunningQuery running) {
     long startedAt = System.nanoTime();
     boolean inTransaction = transactionConnection != null;
     Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
     SqlResponses result = null;
     try {
       try (Statement jdbcStatement = connection.createStatement()) {
+        runningQueries.bindStatement(running, jdbcStatement);
         jdbcStatement.setQueryTimeout(timeoutSeconds());
         boolean isResultSet = jdbcStatement.execute(sql);
         long elapsedMs = elapsedMillisSince(startedAt);
@@ -321,6 +356,12 @@ public class SqlExecutionService {
         return result;
       }
       long elapsedMs = elapsedMillisSince(startedAt);
+      if (runningQueries.isCancelRequested(running)) {
+        // 被取消的写入（F-14）与超时同等对待：提交状态无法确认，执行结果未知
+        log.warn("写入执行被取消，结果未知 sourceId={} kind={} elapsedMs={}",
+            source.id(), statement.kind(), elapsedMs);
+        return new SqlResponses.UnknownOutcome("执行已被取消，写入结果未知，请核实数据库状态");
+      }
       boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
       ConnectionFailureKind failureKind = ConnectionFailureKind.classify(exception);
       if (writeStatement && failureKind.isOutcomeUnknown()) {
@@ -334,6 +375,7 @@ public class SqlExecutionService {
           source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
       throw new DatabaseExecutionException(safeMessage(exception), exception);
     } finally {
+      runningQueries.complete(running);
       if (inTransaction) {
         transactions.touch(sessionToken);
       } else {

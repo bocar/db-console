@@ -30,6 +30,12 @@ import java.sql.SQLTimeoutException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,6 +60,8 @@ class SqlExecutionServiceTest {
 
   private SqlExecutionService executionService;
 
+  private ExecutorService executor;
+
   @BeforeEach
   void setUp() throws Exception {
     DbConsoleProperties properties = properties();
@@ -65,11 +73,18 @@ class SqlExecutionServiceTest {
             registry,
             new ConfirmationService(),
             connections,
+            new RunningQueryRegistry(properties.execution().maxConcurrency()),
             transactions,
             tableStructures,
             history,
             audit,
             properties);
+    executor = Executors.newSingleThreadExecutor();
+  }
+
+  @AfterEach
+  void tearDown() {
+    executor.shutdownNow();
   }
 
   @Test
@@ -231,6 +246,71 @@ class SqlExecutionServiceTest {
     verifyNoMoreInteractions(audit);
   }
 
+  @Test
+  @DisplayName("同一数据源执行并发超过上限时明确拒绝（F-10）")
+  void concurrencyBeyondLimitIsRejectedExplicitly() throws Exception {
+    stubEmptyResultRows();
+    CountDownLatch queryRunning = new CountDownLatch(1);
+    CountDownLatch releaseQuery = new CountDownLatch(1);
+    when(jdbcStatement.execute(anyString()))
+        .thenAnswer(
+            invocation -> {
+              queryRunning.countDown();
+              return releaseQuery.await(5, TimeUnit.SECONDS);
+            });
+    Future<SqlResponses> running =
+        executor.submit(() -> executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1")));
+    assertThat(queryRunning.await(2, TimeUnit.SECONDS)).isTrue();
+
+    assertThatThrownBy(
+            () -> executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 2")))
+        .isInstanceOfSatisfying(
+            SqlRejectException.class,
+            rejected -> assertThat(rejected.code()).isEqualTo("CONCURRENCY_EXCEEDED"))
+        .hasMessageContaining("并发");
+
+    releaseQuery.countDown();
+    assertThat(running.get(5, TimeUnit.SECONDS)).isInstanceOf(SqlResponses.QueryResult.class);
+  }
+
+  @Test
+  @DisplayName("执行结束释放并发额度，后续执行不再被拒")
+  void concurrencySlotIsReleasedAfterExecutionCompletes() throws Exception {
+    stubEmptyResultRows();
+    when(jdbcStatement.execute(anyString())).thenReturn(true);
+
+    SqlResponses first = executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1"));
+    SqlResponses second = executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1"));
+
+    assertThat(first).isInstanceOf(SqlResponses.QueryResult.class);
+    assertThat(second).isInstanceOf(SqlResponses.QueryResult.class);
+  }
+
+  @Test
+  @DisplayName("查询执行超时时明确反馈超时并记录 FAILED 审计")
+  void queryTimeoutIsReportedExplicitly() throws Exception {
+    String sql = "SELECT * FROM dbconsole_test_t";
+    when(jdbcStatement.execute(anyString())).thenThrow(new SQLTimeoutException("statement timed out"));
+
+    assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
+        .isInstanceOf(QueryTimeoutException.class)
+        .hasMessageContaining("超时");
+
+    verify(audit).recordExecution(eq(USERNAME), eq(SOURCE_ID), eq(sql), anyLong(), eq("FAILED"));
+    verifyNoMoreInteractions(audit);
+  }
+
+  private void stubEmptyResultRows() throws SQLException {
+    ResultSet resultSet = mock(ResultSet.class);
+    ResultSetMetaData metadata = mock(ResultSetMetaData.class);
+    when(jdbcStatement.getResultSet()).thenReturn(resultSet);
+    when(resultSet.getMetaData()).thenReturn(metadata);
+    when(metadata.getColumnCount()).thenReturn(1);
+    when(metadata.getColumnLabel(1)).thenReturn("id");
+    when(metadata.getColumnTypeName(1)).thenReturn("INT");
+    when(resultSet.next()).thenReturn(false);
+  }
+
   private static SqlRequest request(String sql) {
     return new SqlRequest(SOURCE_ID, sql, null);
   }
@@ -250,7 +330,7 @@ class SqlExecutionServiceTest {
         new DbConsoleProperties.LoginProperties(USERNAME, "test-secret"),
         new DbConsoleProperties.SessionProperties(Duration.ofHours(8)),
         new DbConsoleProperties.ExecutionProperties(
-            Duration.ofSeconds(30), 20_000, 4, 100, 1_000, 65_536, 10_485_760),
+            Duration.ofSeconds(30), 20_000, 1, 100, 1_000, 65_536, 10_485_760),
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./target/test-audit", Duration.ofDays(30)),
         List.of(source));
