@@ -2,6 +2,7 @@ package io.github.dbconsole.sql;
 
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.dialect.RejectedSql;
+import io.github.dbconsole.dialect.SqlAnalysisResult;
 import io.github.dbconsole.dialect.SqlStatement;
 import io.github.dbconsole.dialect.SqlStatementAnalyzer;
 import io.github.dbconsole.dialect.StatementKind;
@@ -48,7 +49,7 @@ public class SqlExecutionService {
     ResolvedDataSource source = registry.resolve(request.sourceId());
     SqlStatementAnalyzer analyzer =
         SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
-    Object analysis = analyzer.analyze(request.sql());
+    SqlAnalysisResult analysis = analyzer.analyze(request.sql());
     if (analysis instanceof RejectedSql rejected) {
       throw new SqlRejectException("INVALID_SQL", rejected.message());
     }

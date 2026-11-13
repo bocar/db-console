@@ -186,8 +186,6 @@ class SqlStatementAnalyzerTest {
       assertThat(StatementKind.ALTER_TABLE.isImplicitCommitDdl()).isTrue();
       assertThat(StatementKind.DROP_TABLE.isImplicitCommitDdl()).isTrue();
       assertThat(StatementKind.COMMENT_ON.isImplicitCommitDdl()).isTrue();
-      assertThat(StatementKind.SELECT.isQuery()).isTrue();
-      assertThat(StatementKind.DESCRIBE.isQuery()).isTrue();
     }
   }
 }

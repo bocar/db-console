@@ -12,14 +12,22 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** 内存登录会话：令牌签发、滑动续期与过期清理。单实例部署，无持久化。 */
+/**
+ * 内存登录会话：令牌签发、滑动续期与过期清理。单实例部署，无持久化。
+ *
+ * <p>过期判定按单个会话 O(1) 进行；已过期条目的回收以每 {@link #SWEEP_INTERVAL} 次认证
+ * 一次的频率摊销执行，避免每个请求全表扫描。
+ */
 public final class SessionService {
+
+  private static final int SWEEP_INTERVAL = 64;
 
   private final DbConsoleProperties.LoginProperties login;
   private final Duration timeout;
   private final Clock clock;
   private final SecureRandom random = new SecureRandom();
   private final Map<String, LoginSession> sessionsByToken = new ConcurrentHashMap<>();
+  private long authenticationCount;
 
   public SessionService(
       DbConsoleProperties.LoginProperties login, Duration timeout, Clock clock) {
@@ -47,15 +55,14 @@ public final class SessionService {
     if (token == null || token.isBlank()) {
       return Optional.empty();
     }
+    maybeSweepExpired();
     Instant now = clock.instant();
-    sessionsByToken
-        .values()
-        .removeIf(session -> Duration.between(session.lastAccess(), now).compareTo(timeout) > 0);
     LoginSession session = sessionsByToken.get(token);
-    if (session == null) {
+    if (session == null || Duration.between(session.lastAccess(), now).compareTo(timeout) > 0) {
+      sessionsByToken.remove(token);
       return Optional.empty();
     }
-    sessionsByToken.put(token, new LoginSession(session.username(), now));
+    session.slideAccess(now);
     return Optional.of(session.username());
   }
 
@@ -66,6 +73,16 @@ public final class SessionService {
     }
   }
 
+  private synchronized void maybeSweepExpired() {
+    if (++authenticationCount % SWEEP_INTERVAL != 0) {
+      return;
+    }
+    Instant now = clock.instant();
+    sessionsByToken
+        .values()
+        .removeIf(session -> Duration.between(session.lastAccess(), now).compareTo(timeout) > 0);
+  }
+
   private boolean constantEquals(String expected, String actual) {
     if (expected == null || actual == null) {
       return false;
@@ -74,5 +91,27 @@ public final class SessionService {
         expected.getBytes(StandardCharsets.UTF_8), actual.getBytes(StandardCharsets.UTF_8));
   }
 
-  private record LoginSession(String username, Instant lastAccess) {}
+  /** 可变会话条目：滑动续期原地更新，避免每请求重建记录。 */
+  private static final class LoginSession {
+
+    private final String username;
+    private volatile Instant lastAccess;
+
+    private LoginSession(String username, Instant lastAccess) {
+      this.username = username;
+      this.lastAccess = lastAccess;
+    }
+
+    private String username() {
+      return username;
+    }
+
+    private Instant lastAccess() {
+      return lastAccess;
+    }
+
+    private void slideAccess(Instant now) {
+      this.lastAccess = now;
+    }
+  }
 }

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { ChevronDown, ChevronRight, CornerDownLeft, Database, KeyRound, RefreshCw, Search, Table2, X } from 'lucide-vue-next'
 import type { TableDefinition } from '../types'
+import { formatClockTime } from '../display'
 
 const props = defineProps<{
   tables: TableDefinition[]
@@ -41,7 +42,7 @@ const toggleTable = (name: string) => {
 
 const refresh = () => {
   emit('refresh')
-  lastRefresh.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  lastRefresh.value = formatClockTime(new Date().toISOString())
 }
 </script>
 

@@ -8,7 +8,7 @@ import ObjectExplorer from './ObjectExplorer.vue'
 import ResultPanel from './ResultPanel.vue'
 import SqlEditor from './SqlEditor.vue'
 import { displayDatabaseType, displayEnvironment } from '../display'
-import { quoteIdentifier } from '../dialect'
+import { quoteIdentifier, selectTopStatement } from '../dialect'
 import { useDataSources } from '../composables/useDataSources'
 import { useExecution } from '../composables/useExecution'
 import { useManualTransaction } from '../composables/useManualTransaction'
@@ -36,7 +36,7 @@ const { sources, selectedSourceId, selectedSource, testing } = dataSources
 const objectTree = useObjectTree()
 const { tables, selectedTableName, selectedTable, loading: refreshing } = objectTree
 const results = useResults()
-const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elapsedMs, hasResult } = results
+const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elapsedMs, hasResult, updateResult } = results
 const transaction = useManualTransaction()
 const historyStore = useSqlHistory()
 const { load: loadHistory, clear: clearHistoryFor } = historyStore
@@ -82,10 +82,6 @@ const executeFromToolbar = () => {
   void execute(editorRef.value?.executionText() ?? sql.value)
 }
 
-const onConfirm = () => {
-  void confirmExecution()
-}
-
 const commitTransaction = () => {
   const source = selectedSource.value
   if (source) void transaction.commit(source.id)
@@ -109,10 +105,6 @@ const changeSource = (id: string) => {
   notify('已切换数据源，旧对象与旧结果已清除。')
 }
 
-const testConnection = () => {
-  void dataSources.testConnection()
-}
-
 const refreshObjects = () => {
   const source = selectedSource.value
   if (!source) return
@@ -134,7 +126,7 @@ const openTable = (name: string) => {
   const source = selectedSource.value
   if (!source) return
   objectTree.selectTable(name)
-  sql.value = `SELECT *\nFROM ${quoteIdentifier(name, source)}\nLIMIT 100;`
+  sql.value = selectTopStatement(name, source)
   nextTick(() => editorRef.value?.focusEditor())
 }
 
@@ -159,10 +151,6 @@ const newQuery = () => {
 const clearEditor = () => {
   sql.value = ''
   nextTick(() => editorRef.value?.focusEditor())
-}
-
-const changePageSize = (size: number) => {
-  results.changePageSize(size)
 }
 
 const startResize = (event: PointerEvent) => {
@@ -202,7 +190,7 @@ onUnmounted(() => {
       :username="username ?? ''"
       :testing="testing"
       @change-source="changeSource"
-      @test-connection="testConnection"
+      @test-connection="dataSources.testConnection()"
       @logout="emit('logout')"
       @toggle-sidebar="mobileSidebarOpen = !mobileSidebarOpen"
     />
@@ -290,10 +278,10 @@ onUnmounted(() => {
           :transaction-pending="transactionPending"
           :source-name="selectedSource?.displayName ?? ''"
           :has-result="hasResult"
-          :update-info="results.updateResult.value ?? undefined"
+          :update-info="updateResult ?? undefined"
           @tab-change="activeTab = $event"
           @page-change="page = $event"
-          @page-size-change="changePageSize"
+          @page-size-change="results.changePageSize($event)"
           @notify="notify"
         />
       </main>
@@ -312,7 +300,7 @@ onUnmounted(() => {
       :source-name="selectedSource?.displayName ?? ''"
       :environment="confirmEnvironment"
       :implicit-commit="confirmImplicitCommit"
-      @confirm="onConfirm"
+      @confirm="confirmExecution"
       @cancel="cancelExecution"
     />
     <HistoryDialog ref="historyDialog" :entries="currentHistory" :source-name="selectedSource?.displayName ?? ''" @load="loadHistoryEntry" @clear="clearHistory" />

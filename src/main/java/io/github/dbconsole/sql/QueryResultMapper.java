@@ -3,6 +3,7 @@ package io.github.dbconsole.sql;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -20,13 +21,13 @@ final class QueryResultMapper {
 
   static SqlResponses.QueryResult map(ResultSet resultSet, int maxRows, long elapsedMs)
       throws SQLException {
-    int columnCount = resultSet.getMetaData().getColumnCount();
+    ResultSetMetaData metadata = resultSet.getMetaData();
+    int columnCount = metadata.getColumnCount();
     List<SqlResponses.QueryColumn> columns = new ArrayList<>(columnCount);
     for (int index = 1; index <= columnCount; index++) {
       columns.add(
           new SqlResponses.QueryColumn(
-              resultSet.getMetaData().getColumnLabel(index),
-              resultSet.getMetaData().getColumnTypeName(index)));
+              metadata.getColumnLabel(index), metadata.getColumnTypeName(index)));
     }
     List<List<Object>> rows = new ArrayList<>();
     boolean truncated = false;

@@ -1,9 +1,12 @@
 package io.github.dbconsole.auth;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.Optional;
 import org.springframework.http.ResponseCookie;
 
 /**
- * 会话 Cookie 的统一构造：HttpOnly、SameSite=Strict。
+ * 会话 Cookie 的统一构造与读取：HttpOnly、SameSite=Strict。
  *
  * <p>会话 Cookie 不设 maxAge：浏览器会话存续期间始终携带，闲置超时由服务端滑动续期兜底
  * （否则活跃用户会在固定时限点被浏览器丢弃 Cookie，尽管服务端会话仍有效）。
@@ -13,6 +16,20 @@ public final class SessionCookies {
   public static final String SESSION_COOKIE = "DB_CONSOLE_SESSION";
 
   private SessionCookies() {}
+
+  /** 从请求中取出会话令牌；无 Cookie 或无此名字时为空。 */
+  public static Optional<String> sessionToken(HttpServletRequest request) {
+    Cookie[] cookies = request.getCookies();
+    if (cookies == null) {
+      return Optional.empty();
+    }
+    for (Cookie cookie : cookies) {
+      if (SESSION_COOKIE.equals(cookie.getName())) {
+        return Optional.of(cookie.getValue());
+      }
+    }
+    return Optional.empty();
+  }
 
   public static String sessionCookie(String token) {
     return base(token).build().toString();

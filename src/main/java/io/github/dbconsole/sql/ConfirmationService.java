@@ -5,6 +5,7 @@ import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.HexFormat;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -15,12 +16,14 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class ConfirmationService {
 
-  private static final int KEY_BYTES = 32;
+  private static final String HMAC_ALGORITHM = "HmacSHA256";
 
-  private final byte[] key = new byte[KEY_BYTES];
+  private final SecretKeySpec keySpec;
 
   public ConfirmationService() {
+    byte[] key = new byte[32];
     new SecureRandom().nextBytes(key);
+    this.keySpec = new SecretKeySpec(key, HMAC_ALGORITHM);
   }
 
   public String issue(String sessionToken, String sourceId, String sql) {
@@ -42,8 +45,8 @@ public final class ConfirmationService {
 
   private static String sha256(String value) {
     try {
-      return hex(
-          MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException exception) {
       throw new IllegalStateException("SHA-256 不可用", exception);
     }
@@ -51,19 +54,11 @@ public final class ConfirmationService {
 
   private String hmac(String message) {
     try {
-      Mac mac = Mac.getInstance("HmacSHA256");
-      mac.init(new SecretKeySpec(key, "HmacSHA256"));
-      return hex(mac.doFinal(message.getBytes(StandardCharsets.UTF_8)));
+      Mac mac = Mac.getInstance(HMAC_ALGORITHM);
+      mac.init(keySpec);
+      return HexFormat.of().formatHex(mac.doFinal(message.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException | InvalidKeyException exception) {
       throw new IllegalStateException("HMAC 计算失败", exception);
     }
-  }
-
-  private static String hex(byte[] raw) {
-    StringBuilder builder = new StringBuilder(raw.length * 2);
-    for (byte b : raw) {
-      builder.append(String.format("%02x", b));
-    }
-    return builder.toString();
   }
 }

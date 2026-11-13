@@ -2,7 +2,6 @@ package io.github.dbconsole.auth;
 
 import io.github.dbconsole.web.ApiError;
 import io.github.dbconsole.web.SessionAuthInterceptor;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -41,13 +40,7 @@ public class AuthController {
 
   @PostMapping("/logout")
   public void logout(HttpServletRequest request, HttpServletResponse response) {
-    if (request.getCookies() != null) {
-      for (Cookie cookie : request.getCookies()) {
-        if (SessionCookies.SESSION_COOKIE.equals(cookie.getName())) {
-          sessions.logout(cookie.getValue());
-        }
-      }
-    }
+    SessionCookies.sessionToken(request).ifPresent(sessions::logout);
     response.addHeader(HttpHeaders.SET_COOKIE, SessionCookies.clearedCookie());
     response.setStatus(HttpServletResponse.SC_NO_CONTENT);
   }

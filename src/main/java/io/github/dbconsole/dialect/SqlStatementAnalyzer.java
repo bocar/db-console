@@ -17,6 +17,8 @@ import java.util.Locale;
 public final class SqlStatementAnalyzer {
 
   private static final String ONLY_ONE_STATEMENT_MESSAGE = "一次只能执行一条语句";
+  private static final SqlStatementAnalyzer MYSQL_FAMILY = new SqlStatementAnalyzer(true, true);
+  private static final SqlStatementAnalyzer OTHER_FAMILY = new SqlStatementAnalyzer(false, false);
 
   /** WITH 头部扫描的状态位：期待 CTE 名 / 期待 AS / 组结束位。 */
   private enum CtePosition {
@@ -31,12 +33,13 @@ public final class SqlStatementAnalyzer {
     this.tokenizer = new SqlTokenizer(hashLineComments, backslashEscapes);
   }
 
+  /** 分析器无状态可复用：按方言族返回预建实例。 */
   public static SqlStatementAnalyzer forDialect(DatabaseType type, CompatibilityMode mode) {
     boolean mysqlFamily =
         type == DatabaseType.MYSQL
             || type == DatabaseType.TIDB
             || mode == CompatibilityMode.MYSQL;
-    return new SqlStatementAnalyzer(mysqlFamily, mysqlFamily);
+    return mysqlFamily ? MYSQL_FAMILY : OTHER_FAMILY;
   }
 
   public SqlAnalysisResult analyze(String sql) {
@@ -44,8 +47,7 @@ public final class SqlStatementAnalyzer {
     List<SqlTokenizer.Token> significant =
         tokens.stream().filter(token -> token.type() != SqlTokenizer.TokenType.COMMENT).toList();
     if (significant.isEmpty()) {
-      return new RejectedSql(
-          SqlAnalysisResult.RejectionReason.EMPTY_OR_COMMENT_ONLY, "空白或纯注释输入");
+      return new RejectedSql("空白或纯注释输入");
     }
     long semicolonCount =
         significant.stream()
@@ -53,19 +55,16 @@ public final class SqlStatementAnalyzer {
             .count();
     // 只允许单个末尾分号：出现两个及以上分号即视为多语句（F-04）
     if (semicolonCount > 1) {
-      return new RejectedSql(
-          SqlAnalysisResult.RejectionReason.MULTIPLE_STATEMENTS, ONLY_ONE_STATEMENT_MESSAGE);
+      return new RejectedSql(ONLY_ONE_STATEMENT_MESSAGE);
     }
     List<List<SqlTokenizer.Token>> statements = splitBySemicolon(significant);
     List<List<SqlTokenizer.Token>> nonEmpty =
         statements.stream().filter(part -> !part.isEmpty()).toList();
     if (nonEmpty.size() > 1) {
-      return new RejectedSql(
-          SqlAnalysisResult.RejectionReason.MULTIPLE_STATEMENTS, ONLY_ONE_STATEMENT_MESSAGE);
+      return new RejectedSql(ONLY_ONE_STATEMENT_MESSAGE);
     }
     if (nonEmpty.isEmpty()) {
-      return new RejectedSql(
-          SqlAnalysisResult.RejectionReason.EMPTY_OR_COMMENT_ONLY, "空白或纯注释输入");
+      return new RejectedSql("空白或纯注释输入");
     }
     List<SqlTokenizer.Token> statement = nonEmpty.get(0);
     int mainVerbIndex = mainVerbIndex(statement);

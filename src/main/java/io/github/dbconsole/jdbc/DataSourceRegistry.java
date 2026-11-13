@@ -1,6 +1,7 @@
 package io.github.dbconsole.jdbc;
 
 import io.github.dbconsole.config.DbConsoleProperties;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,26 +15,29 @@ import java.util.Map;
 public final class DataSourceRegistry {
 
   private final Map<String, ResolvedDataSource> dataSourcesById;
+  private final List<DataSourceSummary> summaries;
 
   public DataSourceRegistry(DbConsoleProperties properties, CredentialSource credentials) {
     Map<String, ResolvedDataSource> resolved = new LinkedHashMap<>();
+    List<DataSourceSummary> publicSummaries = new ArrayList<>();
     for (DbConsoleProperties.DataSourceProperties source : properties.dataSources()) {
-      resolved.put(source.id(), resolve(source, credentials));
+      ResolvedDataSource item = resolve(source, credentials);
+      resolved.put(source.id(), item);
+      publicSummaries.add(
+          new DataSourceSummary(
+              source.id(),
+              source.displayName(),
+              source.environment(),
+              source.databaseType(),
+              source.compatibilityMode()));
     }
     this.dataSourcesById = Collections.unmodifiableMap(resolved);
+    this.summaries = List.copyOf(publicSummaries);
   }
 
-  /** 浏览器可见的公开信息列表，保持配置顺序。 */
+  /** 浏览器可见的公开信息列表，保持配置顺序（启动时预计算）。 */
   public List<DataSourceSummary> summaries() {
-    return dataSourcesById.values().stream()
-        .map(source ->
-            new DataSourceSummary(
-                source.id(),
-                source.displayName(),
-                source.environment(),
-                source.databaseType(),
-                source.compatibilityMode()))
-        .toList();
+    return summaries;
   }
 
   /** 按标识解析；未知标识拒绝。 */

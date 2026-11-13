@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,12 +29,12 @@ class AuthApiTest {
   @Test
   @DisplayName("正确凭据登录：返回账号并种下会话 Cookie，可访问会话探针")
   void loginSucceedsAndSetsSessionCookie() throws Exception {
-    MvcResult login = login("admin", "test-secret");
+    Cookie session = loginCookie();
 
-    assertThat(extractSessionCookie(login)).isNotNull();
+    assertThat(session).isNotNull();
 
     mockMvc
-        .perform(get("/api/auth/session").cookie(extractSessionCookie(login)))
+        .perform(get("/api/auth/session").cookie(session))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.username").value("admin"));
   }
@@ -65,7 +66,7 @@ class AuthApiTest {
   @Test
   @DisplayName("登出使会话立即失效")
   void logoutInvalidatesSession() throws Exception {
-    Cookie session = extractSessionCookie(login("admin", "test-secret"));
+    Cookie session = loginCookie();
 
     mockMvc.perform(post("/api/auth/logout").cookie(session)).andExpect(status().isNoContent());
 
@@ -86,20 +87,8 @@ class AuthApiTest {
         .content("{\"username\":\"%s\",\"password\":\"%s\"}".formatted(username, password));
   }
 
-  private MvcResult login(String username, String password) throws Exception {
-    return mockMvc.perform(loginRequest(username, password)).andExpect(status().isOk()).andReturn();
+  private Cookie loginCookie() throws Exception {
+    return AuthTestSupport.loginSession(mockMvc);
   }
 
-  private Cookie extractSessionCookie(MvcResult result) {
-    jakarta.servlet.http.Cookie[] cookies = result.getResponse().getCookies();
-    if (cookies == null) {
-      return null;
-    }
-    for (Cookie cookie : cookies) {
-      if (SESSION_COOKIE.equals(cookie.getName())) {
-        return cookie;
-      }
-    }
-    return null;
-  }
 }

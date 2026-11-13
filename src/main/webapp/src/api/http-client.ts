@@ -9,19 +9,22 @@ import type {
   TableDefinition,
 } from '../types'
 
-/** 错误码联合：镜像后端 ApiError.code，新增码需同步（手写 wire 契约，ADR-0003）。 */
-export type ApiErrorCode =
-  | 'UNAUTHENTICATED'
-  | 'BAD_CREDENTIALS'
-  | 'INVALID_REQUEST'
-  | 'NETWORK_ERROR'
-  | 'REQUEST_FAILED'
-  | 'TRANSACTION_OPEN'
-  | 'UNKNOWN_DATA_SOURCE'
-  | 'INVALID_SQL'
-  | 'OUT_OF_SCOPE'
-  | 'SQL_TOO_LONG'
-  | 'DATABASE_ERROR'
+/** 错误码单一来源：镜像后端 ApiError.code，新增码需同步（手写 wire 契约，ADR-0003）。 */
+const API_ERROR_CODES = [
+  'UNAUTHENTICATED',
+  'BAD_CREDENTIALS',
+  'INVALID_REQUEST',
+  'NETWORK_ERROR',
+  'REQUEST_FAILED',
+  'TRANSACTION_OPEN',
+  'UNKNOWN_DATA_SOURCE',
+  'INVALID_SQL',
+  'OUT_OF_SCOPE',
+  'SQL_TOO_LONG',
+  'DATABASE_ERROR',
+] as const
+
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number]
 
 /** 带错误码的 API 异常：code 供前端分派，message 面向用户。 */
 export class ApiClientError extends Error {
@@ -36,22 +39,8 @@ export class ApiClientError extends Error {
   }
 }
 
-const KNOWN_ERROR_CODES: readonly string[] = [
-  'UNAUTHENTICATED',
-  'BAD_CREDENTIALS',
-  'INVALID_REQUEST',
-  'NETWORK_ERROR',
-  'REQUEST_FAILED',
-  'TRANSACTION_OPEN',
-  'UNKNOWN_DATA_SOURCE',
-  'INVALID_SQL',
-  'OUT_OF_SCOPE',
-  'SQL_TOO_LONG',
-  'DATABASE_ERROR',
-]
-
 function toErrorCode(value: unknown): ApiErrorCode {
-  return typeof value === 'string' && KNOWN_ERROR_CODES.includes(value)
+  return typeof value === 'string' && (API_ERROR_CODES as readonly string[]).includes(value)
     ? (value as ApiErrorCode)
     : 'REQUEST_FAILED'
 }

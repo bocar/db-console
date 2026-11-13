@@ -18,22 +18,25 @@ export function useManualTransaction() {
   }
 
   async function commit(sourceId: string): Promise<void> {
-    try {
-      await api.transaction.commit(sourceId)
-      pendingBySource.value = new Map(pendingBySource.value).set(sourceId, false)
-      toast.notify('事务已提交，所有变更已生效。')
-    } catch (error) {
-      toast.notify(error instanceof Error ? error.message : '提交失败。')
-    }
+    await finish(sourceId, api.transaction.commit, '事务已提交，所有变更已生效。', '提交失败。')
   }
 
   async function rollback(sourceId: string): Promise<void> {
+    await finish(sourceId, api.transaction.rollback, '事务已回滚，未提交变更已撤销。', '回滚失败。')
+  }
+
+  async function finish(
+    sourceId: string,
+    action: (id: string) => Promise<void>,
+    successMessage: string,
+    failureMessage: string,
+  ): Promise<void> {
     try {
-      await api.transaction.rollback(sourceId)
+      await action(sourceId)
       pendingBySource.value = new Map(pendingBySource.value).set(sourceId, false)
-      toast.notify('事务已回滚，未提交变更已撤销。')
+      toast.notify(successMessage)
     } catch (error) {
-      toast.notify(error instanceof Error ? error.message : '回滚失败。')
+      toast.notify(error instanceof Error ? error.message : failureMessage)
     }
   }
 

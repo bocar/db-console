@@ -1,10 +1,8 @@
 package io.github.dbconsole.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.dbconsole.auth.AuthController;
 import io.github.dbconsole.auth.SessionCookies;
 import io.github.dbconsole.auth.SessionService;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -34,11 +32,11 @@ public final class SessionAuthInterceptor implements HandlerInterceptor {
   public boolean preHandle(
       HttpServletRequest request, HttpServletResponse response, Object handler)
       throws IOException {
-    String token = sessionToken(request);
-    Optional<String> username = sessions.authenticate(token);
+    Optional<String> token = SessionCookies.sessionToken(request);
+    Optional<String> username = sessions.authenticate(token.orElse(null));
     if (username.isPresent()) {
       request.setAttribute(USERNAME_ATTRIBUTE, username.get());
-      request.setAttribute(SESSION_TOKEN_ATTRIBUTE, token);
+      request.setAttribute(SESSION_TOKEN_ATTRIBUTE, token.orElseThrow());
       return true;
     }
     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -50,18 +48,5 @@ public final class SessionAuthInterceptor implements HandlerInterceptor {
             objectMapper.writeValueAsString(
                 new ApiError("UNAUTHENTICATED", "未登录或会话已失效，请重新登录")));
     return false;
-  }
-
-  private String sessionToken(HttpServletRequest request) {
-    Cookie[] cookies = request.getCookies();
-    if (cookies == null) {
-      return null;
-    }
-    for (Cookie cookie : cookies) {
-      if (SessionCookies.SESSION_COOKIE.equals(cookie.getName())) {
-        return cookie.getValue();
-      }
-    }
-    return null;
   }
 }
