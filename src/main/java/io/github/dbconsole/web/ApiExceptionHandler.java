@@ -1,6 +1,8 @@
 package io.github.dbconsole.web;
 
 import io.github.dbconsole.jdbc.UnknownDataSourceException;
+import io.github.dbconsole.metadata.MetadataException;
+import io.github.dbconsole.metadata.TableNotFoundException;
 import io.github.dbconsole.sql.DatabaseExecutionException;
 import io.github.dbconsole.sql.SqlRejectException;
 import io.github.dbconsole.transaction.TransactionManager;
@@ -29,6 +31,19 @@ public class ApiExceptionHandler {
   public ResponseEntity<ApiError> handleUnknownDataSource(UnknownDataSourceException ex) {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(new ApiError("UNKNOWN_DATA_SOURCE", "未知数据源标识，请求已拒绝"));
+  }
+
+  @ExceptionHandler(TableNotFoundException.class)
+  public ResponseEntity<ApiError> handleTableNotFound(TableNotFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new ApiError("TABLE_NOT_FOUND", ex.getMessage()));
+  }
+
+  @ExceptionHandler(MetadataException.class)
+  public ResponseEntity<ApiError> handleMetadata(MetadataException ex) {
+    log.warn("元数据读取失败：{}", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(new ApiError("METADATA_ERROR", ex.getMessage()));
   }
 
   @ExceptionHandler(SqlRejectException.class)

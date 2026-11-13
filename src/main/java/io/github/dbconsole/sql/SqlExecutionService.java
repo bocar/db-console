@@ -10,13 +10,12 @@ import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
-import io.github.dbconsole.metadata.TableStructureService;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -102,16 +101,12 @@ public class SqlExecutionService {
     String tableName =
         sql.trim()
             .replaceFirst("(?i)^(DESC|DESCRIBE)\\s+", "")
-            .replaceAll("^[`\"']|[`\"']$", "")
             .replaceAll(";$", "")
             .trim();
     if (tableName.isEmpty()) {
       throw new SqlRejectException("INVALID_SQL", "DESC 需要指定表名");
     }
     TableStructure structure = tableStructures.tableStructure(source.id(), tableName);
-    if (structure == null) {
-      throw new DatabaseExecutionException("表 " + tableName + " 不存在或无权访问", null);
-    }
     List<SqlResponses.QueryColumn> columns =
         List.of(
             new SqlResponses.QueryColumn("COLUMN_NAME", "VARCHAR"),
@@ -122,7 +117,6 @@ public class SqlExecutionService {
             new SqlResponses.QueryColumn("COMMENT", "VARCHAR"));
     List<List<Object>> rows = new ArrayList<>();
     for (TableStructure.ColumnDefinition column : structure.columns()) {
-      // Arrays.asList 允许 null（defaultValue 可为 null），List.of 不允许
       rows.add(
           Arrays.asList(
               column.name(),

@@ -7,6 +7,7 @@ const loading = ref(false)
 const loadError = ref('')
 const selectedTableName = ref('')
 let loadGeneration = 0
+let currentSourceId = ''
 
 /** 对象树（F-03）：表结构与当前选中表；迟到的旧响应被丢弃。 */
 export function useObjectTree() {
@@ -49,17 +50,16 @@ export function useObjectTree() {
     if (sourceId) void refreshStructureDetail(sourceId)
   }
 
-  let currentSourceId = ''
+  
 
   async function refreshStructureDetail(sourceId: string): Promise<void> {
     const tableName = selectedTableName.value
     if (!tableName) return
     try {
       const detail = await api.metadata.tableStructure(sourceId, tableName)
-      // 原位更新，保持选中
       const index = tables.value.findIndex((table) => table.name === tableName)
       if (index >= 0) {
-        tables.value = tables.value.map((table, i) => (i === index ? detail : table))
+        tables.value.splice(index, 1, detail)
       }
     } catch {
       // 结构补全失败保持列表数据

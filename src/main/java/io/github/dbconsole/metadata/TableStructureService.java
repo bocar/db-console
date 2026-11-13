@@ -28,24 +28,26 @@ public class TableStructureService {
     this.registry = registry;
   }
 
-  /** 列出当前库/模式下全部表的结构。 */
+  /** 列出当前库/模式下全部表（名称+注释）；列/索引/外键由单表结构接口懒加载。 */
   public List<TableStructure> listTables(String sourceId) {
     ResolvedDataSource source = registry.resolve(sourceId);
     try (Connection connection = connections.open(source)) {
       DatabaseMetaData meta = connection.getMetaData();
-      String catalog = connection.getCatalog();
-      String schema = connection.getSchema();
       List<TableStructure> tables = new ArrayList<>();
-      try (ResultSet rs = meta.getTables(catalog, schema, "%", new String[] {"TABLE"})) {
+      try (ResultSet rs =
+          meta.getTables(connection.getCatalog(), connection.getSchema(), "%",
+              new String[] {"TABLE"})) {
         while (rs.next()) {
-          String tableName = rs.getString("TABLE_NAME");
-          tables.add(structure(meta, catalog, schema, tableName));
+          String remarks = rs.getString("REMARKS");
+          tables.add(new TableStructure(
+              rs.getString("TABLE_NAME"),
+              remarks == null ? "" : remarks,
+              List.of(), List.of(), List.of()));
         }
       }
       return tables;
     } catch (SQLException exception) {
-      throw new IllegalStateException(
-          "对象结构读取失败：" + exception.getMessage(), exception);
+      throw new MetadataException("对象结构读取失败：" + exception.getMessage(), exception);
     }
   }
 
@@ -65,36 +67,22 @@ public class TableStructureService {
         schema = parts[0];
         tableName = parts[1];
       }
-      TableStructure structure = tableExists(meta, catalog, schema, tableName)
-          ? structure(meta, catalog, schema, tableName) : null;
-      if (structure == null) {
-        throw new org.springframework.web.server.ResponseStatusException(
-            org.springframework.http.HttpStatus.NOT_FOUND,
-            "表 " + tableName + " 不存在或无权访问");
-      }
-      return structure;
+      return structure(meta, catalog, schema, tableName);
     } catch (SQLException exception) {
-      throw new IllegalStateException(
-          "表结构读取失败：" + exception.getMessage(), exception);
+      throw new MetadataException("表结构读取失败：" + exception.getMessage(), exception);
     }
   }
 
-  private boolean tableExists(
-      DatabaseMetaData meta, String catalog, String schema, String tableName)
-      throws SQLException {
-    try (ResultSet rs = meta.getTables(catalog, schema, tableName, new String[] {"TABLE"})) {
-      return rs.next();
-    }
-  }
+
 
   private TableStructure structure(
       DatabaseMetaData meta, String catalog, String schema, String tableName)
       throws SQLException {
+    String tableComment = loadTableComment(meta, catalog, schema, tableName);
     Map<String, TableStructure.ColumnDefinition> columns = loadColumns(meta, catalog, schema, tableName);
     markPrimaryKeys(meta, catalog, schema, tableName, columns);
     List<TableStructure.IndexDefinition> indexes = loadIndexes(meta, catalog, schema, tableName);
     List<TableStructure.ForeignKeyDefinition> foreignKeys = loadForeignKeys(meta, catalog, schema, tableName);
-    String tableComment = loadTableComment(meta, catalog, schema, tableName);
     return new TableStructure(
         tableName, tableComment, new ArrayList<>(columns.values()), indexes, foreignKeys);
   }
@@ -144,7 +132,7 @@ public class TableStructureService {
       DatabaseMetaData meta, String catalog, String schema, String tableName) throws SQLException {
     Map<String, List<String>> indexColumns = new LinkedHashMap<>();
     Map<String, Boolean> indexUnique = new LinkedHashMap<>();
-    try (ResultSet rs = meta.getIndexInfo(catalog, schema, tableName, false, false)) {
+    try (ResultSet rs = meta.getIndexInfo(catalog, schema, tableName, false, true)) {
       while (rs.next()) {
         String indexName = rs.getString("INDEX_NAME");
         if (indexName == null) continue;
@@ -186,6 +174,7 @@ public class TableStructureService {
     return foreignKeys;
   }
 
+  /** 单次 getTables 同时判定存在性与读取注释。 */
   private String loadTableComment(
       DatabaseMetaData meta, String catalog, String schema, String tableName) throws SQLException {
     try (ResultSet rs = meta.getTables(catalog, schema, tableName, new String[] {"TABLE"})) {
@@ -194,6 +183,7 @@ public class TableStructureService {
         return remarks == null ? "" : remarks;
       }
     }
-    return "";
+    // 未找到
+    throw new TableNotFoundException(tableName);
   }
 }
