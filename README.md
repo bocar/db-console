@@ -15,8 +15,8 @@
 按 [实施工单](https://github.com/bocar/db-console/issues/1) 分片推进，已合并到 `feat/workspace-core` 分支的部分：
 
 - **已完成**：工程基线（驱动锁定、双侧测试骨架、本地配置）；登录与登录会话（F-01）；数据源与连接测试（F-02）；方言语法分析器（ADR-0001，语句边界 / 操作分类 / 最外层 WHERE 检测 / 分页包装判定与方言分页 SQL）；对象树与 DESC（F-03 / F-06）；单语句执行与结果渲染（F-04 / F-05 / F-08），含后端确认机制（F-09）；手动事务与隐式提交 DDL（F-16）；结果三级限制与执行结果未知（F-08 完整 + F-10 部分）；会话历史（F-12）；表列注释生成（F-07）；导出与复制（F-15）；JSONL 审计（F-10 后半）；服务端分页（F-11）；查询取消与执行限制（F-14 + F-10 前半）。
-- **待验收**：T17 发布验收与交付（#18，含 DM8 走查、JAR/Docker 启动验证与合回 main）。
-- 全量测试：后端 234 + 前端 52 用例（凭据在位时含真实 MySQL 集成验收，`DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD` 经环境变量注入）。
+- **已验收**：T17 发布验收（#18）——§5.1 自动化全绿、§5.2 MySQL/DM8 双库逐项验收（生产确认、分页连续性、取消两态、事务与 DDL 拦截、只读账号）、§5.3 JAR 与 Docker 分别启动验证；记录见 [docs/ACCEPTANCE-T17.md](docs/ACCEPTANCE-T17.md)。
+- 全量测试：后端 237 + 前端 52 用例（双库凭据在位时含真实 MySQL/DM8 集成验收，`DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD` / `DB_CONSOLE_DM8_NAVIC_PASSWORD` 经环境变量注入）。
 
 ## 架构与关键边界
 
