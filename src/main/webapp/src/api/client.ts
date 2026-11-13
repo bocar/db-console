@@ -1,5 +1,6 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type {
+  CancelOutcome,
   ConfirmationRequired,
   ConnectionTestResult,
   DataSourceInfo,
@@ -34,7 +35,7 @@ export interface ApiClient {
   sql: {
     execute(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>
     page(sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult>
-    cancel(sourceId: string): Promise<void>
+    cancel(sourceId: string): Promise<CancelOutcome>
   }
   transaction: {
     begin(sourceId: string): Promise<TransactionStatus>

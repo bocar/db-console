@@ -89,7 +89,19 @@ export interface UpdateResult {
   implicitCommitDdl: boolean
 }
 
-export type ExecutionOutcome = QueryResult | UpdateResult
+export type ExecutionOutcome = QueryResult | UpdateResult | CancelledOutcome
+
+/** 查询已取消（F-14）：本会话取消成功后的查询终态，结果不保留。 */
+export interface CancelledOutcome {
+  kind: 'CANCELLED'
+  elapsedMs: number
+}
+
+/** 取消请求结果（F-14）：kind 区分取消成功、查询先完成与取消失败（含原因）。 */
+export type CancelOutcome =
+  | { kind: 'CANCELLED' }
+  | { kind: 'COMPLETED' }
+  | { kind: 'FAILED'; message: string }
 
 /** 执行结果未知（F-10）：写入或提交超时/断连且状态无法确认，不自动重试。 */
 export interface UnknownOutcome {

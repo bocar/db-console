@@ -63,9 +63,18 @@ describe('MockApiClient', () => {
     const client = new MockApiClient(50)
 
     const pending = client.sql.execute('mysql-work-note', 'SELECT 1 FROM orders')
-    await client.sql.cancel('mysql-work-note')
+    const outcome = await client.sql.cancel('mysql-work-note')
 
-    await expect(pending).rejects.toThrow('查询已取消')
+    expect(outcome).toEqual({ kind: 'CANCELLED' })
+    await expect(pending).resolves.toMatchObject({ kind: 'CANCELLED' })
+  })
+
+  it('reports completed when cancelling with no running query', async () => {
+    const client = new MockApiClient(0)
+
+    const outcome = await client.sql.cancel('mysql-work-note')
+
+    expect(outcome).toEqual({ kind: 'COMPLETED' })
   })
 })
 

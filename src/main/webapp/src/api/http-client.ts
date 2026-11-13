@@ -1,5 +1,6 @@
 import type { ApiClient } from './client'
 import type {
+  CancelOutcome,
   ConfirmationRequired,
   ConnectionTestResult,
   DataSourceInfo,
@@ -23,6 +24,8 @@ const API_ERROR_CODES = [
   'INVALID_SQL',
   'OUT_OF_SCOPE',
   'SQL_TOO_LONG',
+  'CONCURRENCY_EXCEEDED',
+  'QUERY_TIMEOUT',
   'DATABASE_ERROR',
   'INVALID_PAGE_SIZE',
   'PAGINATION_NOT_ALLOWED',
@@ -134,8 +137,8 @@ export class HttpApiClient implements ApiClient {
       }),
     page: (sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult> =>
       this.request<QueryResult>('POST', '/api/sql/page', { sourceId, sql, page, pageSize }),
-    cancel: (sourceId: string): Promise<void> =>
-      this.request<void>('POST', `/api/sql/${encodeURIComponent(sourceId)}/cancel`),
+    cancel: (sourceId: string): Promise<CancelOutcome> =>
+      this.request<CancelOutcome>('POST', `/api/sql/${encodeURIComponent(sourceId)}/cancel`),
   }
 
   transaction = {

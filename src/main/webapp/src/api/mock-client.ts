@@ -1,6 +1,7 @@
 import type { ApiClient } from './client'
 import { ApiClientError } from './http-client'
 import type {
+  CancelOutcome,
   ConfirmationRequired,
   ConnectionTestResult,
   DataSourceInfo,
@@ -161,7 +162,7 @@ export class MockApiClient implements ApiClient {
         this.pendingExecution = () => {
           clearTimeout(timer)
           this.pendingExecution = null
-          reject(new Error('查询已取消'))
+          resolve({ kind: 'CANCELLED', elapsedMs: 0 })
         }
       }),
     page: async (sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult> => {
@@ -171,9 +172,14 @@ export class MockApiClient implements ApiClient {
       }
       return this.queryResult(page, pageSize)
     },
-    cancel: async (sourceId: string): Promise<void> => {
+    cancel: async (sourceId: string): Promise<CancelOutcome> => {
       this.requireSource(sourceId)
-      this.pendingExecution?.()
+      const pending = this.pendingExecution
+      if (pending) {
+        pending()
+        return { kind: 'CANCELLED' }
+      }
+      return { kind: 'COMPLETED' }
     },
   }
 

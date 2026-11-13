@@ -1,13 +1,20 @@
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { API_CLIENT_KEY, type ApiClient } from '../api/client'
 import { fakeApiClient } from '../api/test-support'
 import { useDataSources } from './useDataSources'
 import { useResults } from './useResults'
 import { useManualTransaction } from './useManualTransaction'
 import { useExecution } from './useExecution'
-import type { ConfirmationRequired, DataSourceInfo, ExecutionOutcome } from '../types'
+import { useToast } from './useToast'
+import type {
+  CancelOutcome,
+  ConfirmationRequired,
+  DataSourceInfo,
+  ExecutionOutcome,
+  UnknownOutcome,
+} from '../types'
 
 const SOURCE: DataSourceInfo = {
   id: 'mysql-work-note',
@@ -17,10 +24,15 @@ const SOURCE: DataSourceInfo = {
   compatibilityMode: 'NATIVE',
 }
 
-function fakeClient(executeImpl: ApiClient['sql']['execute']): ApiClient {
+type ExecuteResult = ExecutionOutcome | ConfirmationRequired | UnknownOutcome
+
+function fakeClient(
+  executeImpl: ApiClient['sql']['execute'],
+  cancelImpl: ApiClient['sql']['cancel'] = async () => ({ kind: 'CANCELLED' }),
+): ApiClient {
   return fakeApiClient({
     dataSources: { ...fakeApiClient().dataSources, list: async () => [SOURCE] },
-    sql: { ...fakeApiClient().sql, execute: executeImpl },
+    sql: { ...fakeApiClient().sql, execute: executeImpl, cancel: cancelImpl },
   })
 }
 
@@ -33,6 +45,7 @@ function mountExecution(client: ApiClient) {
       const transaction = useManualTransaction()
       void dataSources.load()
       handle = useExecution({ dataSources, results, transaction })
+      mountedResults = results
       return () => null
     },
   })
@@ -40,6 +53,8 @@ function mountExecution(client: ApiClient) {
   if (!handle) throw new Error('useExecution 未初始化')
   return handle
 }
+
+let mountedResults: ReturnType<typeof useResults> | undefined
 
 async function mountExecutionReady(client: ApiClient) {
   const handle = mountExecution(client)
@@ -101,5 +116,97 @@ describe('useExecution 确认流', () => {
     handle.cancelExecution()
 
     expect(handle.pendingConfirmation.value).toBeNull()
+  })
+})
+
+describe('useExecution 查询取消', () => {
+  beforeEach(() => {
+    // composable 单例状态跨用例共享：先清空结果与提示，保证断言只看本用例
+    mountedResults?.reset()
+    useToast().reset()
+  })
+
+  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  it('取消成功：执行以 CANCELLED 终态收尾并提示查询已取消', async () => {
+    const gate = deferred<ExecuteResult>()
+    const handle = await mountExecutionReady(
+      fakeClient(() => gate.promise, async () => ({ kind: 'CANCELLED' })),
+    )
+
+    const running = handle.execute('SELECT * FROM dbconsole_test_t')
+    await flushPromises()
+    expect(handle.isRunning.value).toBe(true)
+
+    await handle.cancelQuery()
+    await flushPromises()
+    expect(handle.canceling.value).toBe(true)
+
+    gate.resolve({ kind: 'CANCELLED', elapsedMs: 5 })
+    await running
+    await flushPromises()
+
+    expect(handle.isRunning.value).toBe(false)
+    expect(handle.canceling.value).toBe(false)
+    expect(useToast().message.value).toBe('查询已取消。')
+    expect(mountedResults?.hasResult.value).toBe(false)
+  })
+
+  it('查询先于取消完成时保留结果并提示', async () => {
+    const gate = deferred<ExecuteResult>()
+    const handle = await mountExecutionReady(
+      fakeClient(() => gate.promise, async () => ({ kind: 'COMPLETED' })),
+    )
+
+    const running = handle.execute('SELECT id FROM dbconsole_test_t')
+    await flushPromises()
+
+    await handle.cancelQuery()
+    await flushPromises()
+    expect(handle.canceling.value).toBe(false)
+    expect(useToast().message.value).toBe('查询已先完成，结果已保留。')
+
+    gate.resolve({
+      kind: 'QUERY',
+      columns: [{ name: 'id', type: 'INT' }],
+      rows: [[1]],
+      elapsedMs: 3,
+      truncated: false,
+    })
+    await running
+    await flushPromises()
+
+    expect(handle.isRunning.value).toBe(false)
+    expect(mountedResults?.queryResult.value?.rows).toEqual([[1]])
+  })
+
+  it('取消失败时提示原因并退出取消中状态', async () => {
+    const gate = deferred<ExecuteResult>()
+    const handle = await mountExecutionReady(
+      fakeClient(
+        () => gate.promise,
+        async () => ({ kind: 'FAILED', message: '驱动不支持取消' }) as CancelOutcome,
+      ),
+    )
+
+    const running = handle.execute('SELECT * FROM dbconsole_test_t')
+    await flushPromises()
+
+    await handle.cancelQuery()
+    await flushPromises()
+
+    expect(handle.canceling.value).toBe(false)
+    expect(useToast().message.value).toBe('取消失败：驱动不支持取消')
+
+    gate.resolve({ kind: 'CANCELLED', elapsedMs: 5 })
+    await running
+    await flushPromises()
+    expect(handle.isRunning.value).toBe(false)
   })
 })

@@ -69,6 +69,10 @@ export function useExecution(deps: ExecutionDeps) {
         toast.notify(`执行结果未知：${outcome.message}。系统不会自动重试，请核实数据库状态。`)
         return
       }
+      if (outcome.kind === 'CANCELLED') {
+        toast.notify('查询已取消。')
+        return
+      }
       if (outcome.kind === 'QUERY') {
         deps.results.showQuery(outcome, sourceId, statement)
         toast.notify('查询已完成，结果已更新。')
@@ -93,12 +97,24 @@ export function useExecution(deps: ExecutionDeps) {
     }
   }
 
+  /** 查询取消（F-14）：请求发出后进入「取消中」，终态由执行响应或取消结果给出。 */
   async function cancelQuery(): Promise<void> {
     const source = deps.dataSources.selectedSource.value
     if (!source || !isRunning.value || canceling.value) return
     canceling.value = true
     try {
-      await api.sql.cancel(source.id)
+      const outcome = await api.sql.cancel(source.id)
+      if (outcome.kind === 'COMPLETED') {
+        canceling.value = false
+        toast.notify('查询已先完成，结果已保留。')
+        return
+      }
+      if (outcome.kind === 'FAILED') {
+        canceling.value = false
+        toast.notify(`取消失败：${outcome.message}`)
+        return
+      }
+      // CANCELLED：保持「取消中」，等待执行请求返回取消终态
     } catch (error) {
       canceling.value = false
       toast.notify(error instanceof Error ? `取消失败：${error.message}` : '取消失败。')
