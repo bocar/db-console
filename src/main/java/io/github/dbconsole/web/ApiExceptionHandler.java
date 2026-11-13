@@ -1,6 +1,8 @@
 package io.github.dbconsole.web;
 
 import io.github.dbconsole.jdbc.UnknownDataSourceException;
+import io.github.dbconsole.sql.DatabaseExecutionException;
+import io.github.dbconsole.sql.SqlRejectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -25,5 +27,16 @@ public class ApiExceptionHandler {
   public ResponseEntity<ApiError> handleUnknownDataSource(UnknownDataSourceException ex) {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(new ApiError("UNKNOWN_DATA_SOURCE", "未知数据源标识，请求已拒绝"));
+  }
+
+  @ExceptionHandler(SqlRejectException.class)
+  public ResponseEntity<ApiError> handleSqlRejection(SqlRejectException ex) {
+    return ResponseEntity.unprocessableEntity().body(new ApiError(ex.code(), ex.getMessage()));
+  }
+
+  @ExceptionHandler(DatabaseExecutionException.class)
+  public ResponseEntity<ApiError> handleDatabaseExecution(DatabaseExecutionException ex) {
+    log.warn("数据库执行失败：{}", ex.getMessage());
+    return ResponseEntity.badRequest().body(new ApiError("DATABASE_ERROR", ex.getMessage()));
   }
 }
