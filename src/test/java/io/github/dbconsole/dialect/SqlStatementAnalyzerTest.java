@@ -222,12 +222,48 @@ class SqlStatementAnalyzerTest {
   @DisplayName("SELECT INTO 边界")
   class SelectInto {
 
-    @Test
-    @DisplayName("SELECT ... INTO OUTFILE 不再按只读查询放行")
-    void selectIntoOutfileIsNotReadOnly() {
-      SqlStatement statement =
-          (SqlStatement) MYSQL.analyze("SELECT * FROM t INTO OUTFILE '/tmp/export.csv'");
-      assertThat(statement.kind()).isEqualTo(StatementKind.OTHER);
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "SELECT * FROM t INTO OUTFILE '/tmp/export.csv' | OTHER",
+        "SELECT * FROM t INTO DUMPFILE '/tmp/blob' | OTHER",
+        "SELECT * INTO OUTFILE '/tmp/export.csv' FROM t | OTHER",
+        "SELECT id, name FROM t INTO @a, @b | OTHER",
+        "SELECT id FROM t INTO @@sort_buffer_size | OTHER",
+        "select * from t into outfile '/tmp/export.csv' | OTHER",
+        "WITH c AS (SELECT 1) SELECT * FROM c INTO OUTFILE '/tmp/export.csv' | OTHER",
+    })
+    @DisplayName("SELECT ... INTO（OUTFILE/DUMPFILE/变量）不再按只读查询放行")
+    void selectWithTopLevelIntoIsNotReadOnly(String sql, StatementKind expected) {
+      SqlStatement statement = (SqlStatement) MYSQL.analyze(sql);
+      assertThat(statement.kind()).isEqualTo(expected);
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "SELECT 'into' FROM t|SELECT",
+        "SELECT \"into\" FROM t|SELECT",
+        "SELECT `into` FROM t|SELECT",
+        "SELECT 1 -- into note|SELECT",
+        "SELECT 1 /* into */ FROM t|SELECT",
+        "SELECT limitation FROM t|SELECT",
+        "SELECT * FROM (SELECT 1 INTO @a) sub|SELECT",
+    })
+    @DisplayName("字符串、引号标识符、注释与括号内的 INTO 不影响只读分类")
+    void intoInLiteralsCommentsAndSubqueriesStaysReadOnly(String sql, StatementKind expected) {
+      SqlStatement statement = (SqlStatement) MYSQL.analyze(sql);
+      assertThat(statement.kind()).isEqualTo(expected);
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "INSERT INTO t VALUES (1) | INSERT",
+        "WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c | INSERT",
+        "UPDATE t SET x = (SELECT y INTO @a FROM s) WHERE id = 1 | UPDATE",
+    })
+    @DisplayName("INSERT/UPDATE 语法中的 INTO 保持原分类")
+    void intoInsideOtherStatementsKeepsTheirKind(String sql, StatementKind expected) {
+      SqlStatement statement = (SqlStatement) MYSQL.analyze(sql);
+      assertThat(statement.kind()).isEqualTo(expected);
     }
   }
 

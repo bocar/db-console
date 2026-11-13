@@ -108,6 +108,21 @@ class SqlPaginationApiTest {
   }
 
   @Test
+  @DisplayName("翻页入口拒绝 SELECT ... INTO 且不建立数据库连接")
+  void pageEndpointRejectsSelectInto() throws Exception {
+    mockMvc.perform(post("/api/sql/page")
+            .cookie(session)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"sourceId\":\"mysql-work-note\","
+                + "\"sql\":\"SELECT * FROM t INTO OUTFILE '/tmp/export.csv'\","
+                + "\"page\":1,\"pageSize\":20}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("PAGINATION_NOT_ALLOWED"));
+
+    verifyNoInteractions(connections);
+  }
+
+  @Test
   @DisplayName("翻页请求超过配置页大小上限时明确拒绝")
   void pageEndpointRejectsExcessivePageSize() throws Exception {
     mockMvc.perform(post("/api/sql/page")

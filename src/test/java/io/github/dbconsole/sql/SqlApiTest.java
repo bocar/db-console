@@ -121,6 +121,30 @@ class SqlApiTest {
   }
 
   @Test
+  @DisplayName("SELECT ... INTO OUTFILE 返回 422 OUT_OF_SCOPE 且不签发确认令牌")
+  void rejectsSelectIntoOutfileWithoutConfirmation() throws Exception {
+    mockMvc
+        .perform(post("/api/sql/execute").cookie(session).contentType(MediaType.APPLICATION_JSON)
+            .content(
+                "{\"sourceId\":\"mysql-work-note\",\"sql\":\"SELECT * FROM t INTO OUTFILE '/tmp/export.csv'\"}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("OUT_OF_SCOPE"))
+        .andExpect(jsonPath("$.confirmationToken").doesNotExist());
+  }
+
+  @Test
+  @DisplayName("生产环境 SELECT ... INTO 同样直接拒绝，绝不进入确认流程")
+  void productionSelectIntoRejectedWithoutConfirmation() throws Exception {
+    mockMvc
+        .perform(post("/api/sql/execute").cookie(session).contentType(MediaType.APPLICATION_JSON)
+            .content(
+                "{\"sourceId\":\"prod-source\",\"sql\":\"SELECT * FROM t INTO DUMPFILE '/tmp/blob'\"}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("OUT_OF_SCOPE"))
+        .andExpect(jsonPath("$.confirmationToken").doesNotExist());
+  }
+
+  @Test
   @DisplayName("超长 SQL 返回 422 SQL_TOO_LONG")
   void rejectsOverlongSql() throws Exception {
     String longSql = "SELECT '" + "x".repeat(21000) + "'";
