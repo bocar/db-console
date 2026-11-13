@@ -7,6 +7,7 @@ import io.github.dbconsole.dialect.SqlStatement;
 import io.github.dbconsole.dialect.SqlStatementAnalyzer;
 import io.github.dbconsole.dialect.StatementKind;
 import io.github.dbconsole.jdbc.ConnectionFactory;
+import io.github.dbconsole.jdbc.ConnectionFailureKind;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
@@ -160,19 +161,19 @@ public class SqlExecutionService {
                 elapsedMs);
           }
         }
+        int rawCount = jdbcStatement.getUpdateCount();
+        // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
         Integer affectedRows =
-            statement.kind().isImplicitCommitDdl() ? null : jdbcStatement.getUpdateCount();
+            statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
         return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction);
       }
     } catch (SQLException exception) {
       long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
       boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
+      ConnectionFailureKind failureKind = ConnectionFailureKind.classify(exception);
       boolean timeoutOrDisconnect =
-          exception instanceof java.sql.SQLTimeoutException
-              || exception.getMessage() != null
-                  && (exception.getMessage().contains("timed out")
-                      || exception.getMessage().contains("Communications link failure")
-                      || exception.getMessage().contains("connection"));
+          failureKind == ConnectionFailureKind.TIMEOUT
+              || failureKind == ConnectionFailureKind.UNAVAILABLE;
       if (writeStatement && timeoutOrDisconnect) {
         log.warn(
             "执行结果未知 sourceId={} kind={} sqlState={} elapsedMs={}",

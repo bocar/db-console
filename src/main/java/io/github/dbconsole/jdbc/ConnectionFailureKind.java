@@ -13,7 +13,7 @@ public enum ConnectionFailureKind {
   UNKNOWN;
 
   /** 按驱动异常特征分类；只依赖 SQLState 与消息文本，不回传原始细节。 */
-  static ConnectionFailureKind classify(SQLException exception) {
+  public static ConnectionFailureKind classify(SQLException exception) {
     if (exception instanceof SQLTimeoutException) {
       return TIMEOUT;
     }
