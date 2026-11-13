@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import io.github.dbconsole.jdbc.CredentialSource;
 import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
@@ -122,7 +123,7 @@ class TransactionMySqlIntegrationTest {
   private String visibleRows() throws Exception {
     MvcResult result = mockMvc.perform(sql("SELECT COUNT(*) AS CNT FROM " + TABLE)).andReturn();
     Object count =
-        com.jayway.jsonpath.JsonPath.read(
+        JsonPath.read(
             result.getResponse().getContentAsString(), "$.rows[0][0]");
     return String.valueOf(count);
   }
@@ -148,7 +149,7 @@ class TransactionMySqlIntegrationTest {
                             + TABLE
                             + "\"}"))
             .andReturn();
-    Object beforeCommit = com.jayway.jsonpath.JsonPath.read(otherView.getResponse().getContentAsString(), "$.rows[0][0]");
+    Object beforeCommit = JsonPath.read(otherView.getResponse().getContentAsString(), "$.rows[0][0]");
     assertThat(String.valueOf(beforeCommit)).isEqualTo("0");
 
     mockMvc.perform(tx("commit")).andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false));
@@ -166,7 +167,7 @@ class TransactionMySqlIntegrationTest {
                             + TABLE
                             + "\"}"))
             .andReturn();
-    Object afterCommit = com.jayway.jsonpath.JsonPath.read(committed.getResponse().getContentAsString(), "$.rows[0][0]");
+    Object afterCommit = JsonPath.read(committed.getResponse().getContentAsString(), "$.rows[0][0]");
     assertThat(String.valueOf(afterCommit)).isEqualTo("1");
     mockMvc.perform(sql("DELETE FROM " + TABLE + " WHERE id = 1")).andExpect(status().isOk());
   }
@@ -257,7 +258,7 @@ class TransactionMySqlIntegrationTest {
                             + TABLE
                             + "\"}"))
             .andReturn();
-    Object afterLogoutCount = com.jayway.jsonpath.JsonPath.read(afterLogout.getResponse().getContentAsString(), "$.rows[0][0]");
+    Object afterLogoutCount = JsonPath.read(afterLogout.getResponse().getContentAsString(), "$.rows[0][0]");
     assertThat(String.valueOf(afterLogoutCount)).isEqualTo("0");
     this.session = fresh;
   }

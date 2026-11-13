@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Assumptions;
@@ -89,7 +90,7 @@ class ImplicitDdlTransactionIntegrationTest {
             .andExpect(jsonPath("$.reason").value("IMPLICIT_COMMIT_DDL"))
             .andReturn();
     String token =
-        com.jayway.jsonpath.JsonPath.read(
+        JsonPath.read(
             confirmation.getResponse().getContentAsString(), "$.confirmationToken");
 
     // 4) 确认后独立连接执行、立即生效（affectedRows null 表示 DDL）
@@ -127,7 +128,7 @@ class ImplicitDdlTransactionIntegrationTest {
                         "{\"sourceId\":\"mysql-work-note\",\"sql\":\"DROP TABLE dbconsole_test_t09\"}"))
             .andReturn();
     String dropToken =
-        com.jayway.jsonpath.JsonPath.read(
+        JsonPath.read(
             dropConfirmation.getResponse().getContentAsString(), "$.confirmationToken");
     mockMvc
         .perform(
