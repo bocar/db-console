@@ -24,6 +24,12 @@ public sealed interface SqlResponses {
       this("QUERY", columns, rows, elapsedMs, truncated, null, null, null, null, null);
     }
 
+    /** 行集合级结果（mapper 层）：仅携带分页探测标记，页身份与总数由执行层补充。 */
+    public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
+        boolean truncated, boolean hasNextPage) {
+      this("QUERY", columns, rows, elapsedMs, truncated, null, null, hasNextPage, null, null);
+    }
+
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated, int page, int pageSize, boolean hasNextPage,
         Long totalRows, Integer totalPages) {

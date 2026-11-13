@@ -20,9 +20,6 @@ public record DbConsoleProperties(
     @Valid List<DataSourceProperties> dataSources) {
 
   public DbConsoleProperties {
-    if (execution != null && execution.defaultPageSize() > execution.maxPageSize()) {
-      throw new IllegalArgumentException("default-page-size must not exceed max-page-size");
-    }
     dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);
     long distinctIds = dataSources.stream().map(DataSourceProperties::id).distinct().count();
     if (distinctIds != dataSources.size()) {
@@ -41,7 +38,14 @@ public record DbConsoleProperties(
       @Positive int defaultPageSize,
       @Positive int maxPageSize,
       @Positive long maxCellBytes,
-      @Positive long maxResultBytes) {}
+      @Positive long maxResultBytes) {
+
+    public ExecutionProperties {
+      if (defaultPageSize > maxPageSize) {
+        throw new IllegalArgumentException("default-page-size must not exceed max-page-size");
+      }
+    }
+  }
 
   public record TransactionProperties(@NotNull Duration idleTimeout) {}
 

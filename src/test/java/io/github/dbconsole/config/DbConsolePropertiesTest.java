@@ -96,15 +96,12 @@ class DbConsolePropertiesTest {
   @Test
   @DisplayName("默认页大小不能超过最大页大小")
   void rejectsDefaultPageSizeAboveMaximum() {
-    DbConsoleProperties.ExecutionProperties invalid =
-        new DbConsoleProperties.ExecutionProperties(
-            EXECUTION_TIMEOUT, MAX_SQL_LENGTH, MAX_CONCURRENCY, 1001, MAX_PAGE_SIZE,
-            MAX_CELL_BYTES, MAX_RESULT_BYTES);
-
     assertThatThrownBy(() -> new DbConsoleProperties(
             login(),
             new DbConsoleProperties.SessionProperties(Duration.ofHours(8)),
-            invalid,
+            new DbConsoleProperties.ExecutionProperties(
+                EXECUTION_TIMEOUT, MAX_SQL_LENGTH, MAX_CONCURRENCY, 1001, MAX_PAGE_SIZE,
+                MAX_CELL_BYTES, MAX_RESULT_BYTES),
             new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
             audit(),
             List.of()))

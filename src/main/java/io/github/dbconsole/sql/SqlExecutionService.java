@@ -2,6 +2,7 @@ package io.github.dbconsole.sql;
 
 import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.config.DbConsoleProperties;
+import io.github.dbconsole.dialect.PaginationSql;
 import io.github.dbconsole.dialect.RejectedSql;
 import io.github.dbconsole.dialect.SqlAnalysisResult;
 import io.github.dbconsole.dialect.SqlStatement;
@@ -208,12 +209,11 @@ public class SqlExecutionService {
     try {
       long offset = ((long) page - 1) * pageSize;
       String baseSql = analyzer.requiresDerivedTableForPagination(statementSql)
-          ? "SELECT * FROM (" + statementSql + "\n) dbconsole_page"
+          ? PaginationSql.derivedTableWrap(statementSql)
           : statementSql;
-      String pagedSql = baseSql + "\nLIMIT " + (pageSize + 1) + " OFFSET " + offset;
+      String pagedSql = PaginationSql.appendPageClause(baseSql, pageSize + 1, offset);
       try (Statement jdbcStatement = connection.createStatement()) {
-        int timeoutSeconds = Math.max(1, (int) properties.execution().timeout().toSeconds());
-        jdbcStatement.setQueryTimeout(timeoutSeconds);
+        jdbcStatement.setQueryTimeout(timeoutSeconds());
         if (!jdbcStatement.execute(pagedSql)) {
           throw new SQLException("查询未返回结果集");
         }
@@ -232,7 +232,7 @@ public class SqlExecutionService {
             pageResult.truncated(), page, pageSize, Boolean.TRUE.equals(pageResult.hasNextPage()),
             null, null);
       }
-      Long totalRows = tryCount(connection, source.id(), statementSql);
+      Long totalRows = countTotalRows(connection, source.id(), statementSql);
       if (totalRows != null) {
         int totalPages = (int) (totalRows / pageSize + (totalRows % pageSize == 0 ? 0 : 1));
         result = new SqlResponses.QueryResult(result.columns(), result.rows(), result.elapsedMs(),
@@ -262,12 +262,11 @@ public class SqlExecutionService {
     return result;
   }
 
-  private Long tryCount(Connection connection, String sourceId, String sql) {
-    String countSql = "SELECT COUNT(*) FROM (" + sql + "\n) dbconsole_count";
+  /** 总行数统计（F-11）：COUNT 包装无法安全执行时降级为总数未知。 */
+  private Long countTotalRows(Connection connection, String sourceId, String sql) {
     try (Statement countStatement = connection.createStatement()) {
-      int timeoutSeconds = Math.max(1, (int) properties.execution().timeout().toSeconds());
-      countStatement.setQueryTimeout(timeoutSeconds);
-      if (!countStatement.execute(countSql)) {
+      countStatement.setQueryTimeout(timeoutSeconds());
+      if (!countStatement.execute(PaginationSql.countSql(sql))) {
         return null;
       }
       try (ResultSet countResult = countStatement.getResultSet()) {
@@ -291,9 +290,7 @@ public class SqlExecutionService {
     SqlResponses result = null;
     try {
       try (Statement jdbcStatement = connection.createStatement()) {
-        int timeoutSeconds =
-            Math.max(1, (int) properties.execution().timeout().toSeconds());
-        jdbcStatement.setQueryTimeout(timeoutSeconds);
+        jdbcStatement.setQueryTimeout(timeoutSeconds());
         boolean isResultSet = jdbcStatement.execute(sql);
         long elapsedMs = elapsedMillisSince(startedAt);
         log.info(
@@ -349,6 +346,11 @@ public class SqlExecutionService {
       }
     }
     return result;
+  }
+
+  /** 查询超时秒数：配置不足 1 秒按 1 秒兜底。 */
+  private int timeoutSeconds() {
+    return Math.max(1, (int) properties.execution().timeout().toSeconds());
   }
 
   private Connection openAutoCommit(ResolvedDataSource source) {

@@ -23,7 +23,12 @@ final class QueryResultMapper {
       ResultSet resultSet,
       io.github.dbconsole.config.DbConsoleProperties.ExecutionProperties limits,
       long elapsedMs) throws SQLException {
-    return map(resultSet, limits, elapsedMs, limits.maxPageSize());
+    SqlResponses.QueryResult rows = map(resultSet, limits, elapsedMs, limits.maxPageSize());
+    if (Boolean.TRUE.equals(rows.hasNextPage())) {
+      // 非分页路径：行数上限命中按 F-08 报「内容截断」；下一页语义仅在分页路径有效
+      return new SqlResponses.QueryResult(rows.columns(), rows.rows(), rows.elapsedMs(), true);
+    }
+    return rows;
   }
 
   static SqlResponses.QueryResult map(
@@ -65,8 +70,7 @@ final class QueryResultMapper {
       }
       rows.add(row);
     }
-    return new SqlResponses.QueryResult("QUERY", columns, rows, elapsedMs, truncated,
-        null, null, hasNextPage, null, null);
+    return new SqlResponses.QueryResult(columns, rows, elapsedMs, truncated, hasNextPage);
   }
 
   /**

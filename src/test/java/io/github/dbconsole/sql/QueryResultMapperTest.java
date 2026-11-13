@@ -64,12 +64,12 @@ class QueryResultMapperTest {
   }
 
   @Test
-  @DisplayName("超过页行数时标记 hasNextPage 而不误报内容截断")
+  @DisplayName("分页取数超过页行数时标记 hasNextPage 而不误报内容截断")
   void marksNextPageWithoutContentTruncation() throws Exception {
     Object[][] data = {{1}, {2}, {3}, {4}};
     ResultSet resultSet = resultSet(data, "id");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(2, 10_000_000, 65_536), 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(100, 10_000_000, 65_536), 5, 2);
 
     assertThat(result.rows()).hasSize(2);
     assertThat(result.truncated()).isFalse();
@@ -87,6 +87,19 @@ class QueryResultMapperTest {
     SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(10, 10_000_000, 100), 1);
     String cell = (String) result.rows().get(0).get(0);
     assertThat(cell).startsWith("x").contains("<truncated:").endsWith("chars>");
+  }
+
+  @Test
+  @DisplayName("非分页路径行数上限命中报内容截断，不产生下一页语义")
+  void unpagedRowCapReportsTruncationWithoutNextPage() throws Exception {
+    Object[][] data = {{1}, {2}, {3}, {4}};
+    ResultSet resultSet = resultSet(data, "id");
+
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(2, 10_000_000, 65_536), 1);
+
+    assertThat(result.rows()).hasSize(2);
+    assertThat(result.truncated()).isTrue();
+    assertThat(result.hasNextPage()).isNull();
   }
 
   @Test

@@ -172,6 +172,53 @@ class SqlStatementAnalyzerTest {
   }
 
   @Nested
+  @DisplayName("分页终结符移除")
+  class PaginationTerminator {
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "SELECT 1|SELECT 1",
+        "SELECT 1;|SELECT 1",
+        "SELECT ';' FROM t|SELECT ';' FROM t",
+        "SELECT \"a;b\" FROM t;|SELECT \"a;b\" FROM t",
+        "SELECT `a;b` FROM t;|SELECT `a;b` FROM t",
+        "SELECT 1; -- tail ; more|SELECT 1 -- tail ; more",
+        "SELECT 1 /* ; */|SELECT 1 /* ; */",
+    })
+    @DisplayName("仅移除语句终结分号；字符串、引号标识符与注释中的分号保留")
+    void removesOnlyStatementTerminator(String sql, String expected) {
+      assertThat(MYSQL.removeTerminator(sql)).isEqualTo(expected);
+    }
+  }
+
+  @Nested
+  @DisplayName("分页派生表判定")
+  class PaginationDerivedTable {
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "SELECT * FROM t ORDER BY id|false",
+        "SELECT * FROM t LIMIT 10|true",
+        "SELECT * FROM t LIMIT 10 OFFSET 5|true",
+        "SELECT * FROM t OFFSET 5|true",
+        "SELECT * FROM t FETCH FIRST 10 ROWS ONLY|true",
+        "SELECT * FROM t FOR UPDATE|true",
+        "SELECT 'limit' FROM t|false",
+        "SELECT \"limit\" FROM t|false",
+        "SELECT `limit` FROM t|false",
+        "SELECT 1 -- limit note|false",
+        "SELECT 1 /* limit note */|false",
+        "SELECT limitation FROM t|false",
+        "SELECT * FROM (SELECT * FROM s LIMIT 5) sub|false",
+        "SELECT * FROM (SELECT * FROM s LIMIT 5) sub WHERE x = 1|false",
+    })
+    @DisplayName("仅顶层 LIMIT/OFFSET/FETCH/FOR 需要派生表包装")
+    void onlyTopLevelPagingClausesRequireDerivedTable(String sql, boolean expected) {
+      assertThat(MYSQL.requiresDerivedTableForPagination(sql)).isEqualTo(expected);
+    }
+  }
+
+  @Nested
   @DisplayName("类别谓词")
   class KindPredicates {
 

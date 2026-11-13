@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import io.github.dbconsole.jdbc.CredentialSource;
 import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
@@ -110,7 +111,7 @@ class SqlExecutionMySqlIntegrationTest {
   private MvcResult executeWithToken(String sql) throws Exception {
     MvcResult confirmation = execute(sql);
     String token =
-        com.jayway.jsonpath.JsonPath.read(
+        JsonPath.read(
             confirmation.getResponse().getContentAsString(), "$.confirmationToken");
     return mockMvc
         .perform(
@@ -183,12 +184,12 @@ class SqlExecutionMySqlIntegrationTest {
   @Test
   void missingWhereUpdateRequiresConfirmationThenExecutesWithToken() throws Exception {
     MvcResult first = execute("UPDATE " + TABLE + " SET name = 'x'");
-    Object firstKind = com.jayway.jsonpath.JsonPath.read(body(first), "$.kind");
+    Object firstKind = JsonPath.read(body(first), "$.kind");
     assertThat(firstKind).isEqualTo("CONFIRMATION_REQUIRED");
 
     MvcResult second = executeWithToken("UPDATE " + TABLE + " SET name = 'x'");
-    Object secondKind = com.jayway.jsonpath.JsonPath.read(body(second), "$.kind");
-    Object secondAffected = com.jayway.jsonpath.JsonPath.read(body(second), "$.affectedRows");
+    Object secondKind = JsonPath.read(body(second), "$.kind");
+    Object secondAffected = JsonPath.read(body(second), "$.affectedRows");
     assertThat(secondKind).isEqualTo("UPDATE");
     assertThat(secondAffected).isEqualTo(0);
   }
@@ -196,12 +197,12 @@ class SqlExecutionMySqlIntegrationTest {
   @Test
   void createAndDropTableAsImplicitCommitDdlRequireConfirmation() throws Exception {
     MvcResult create = execute("CREATE TABLE " + TABLE + "_ddl (id INT PRIMARY KEY)");
-    Object createReason = com.jayway.jsonpath.JsonPath.read(body(create), "$.reason");
+    Object createReason = JsonPath.read(body(create), "$.reason");
     assertThat(createReason).isEqualTo("IMPLICIT_COMMIT_DDL");
 
     MvcResult created = executeWithToken("CREATE TABLE " + TABLE + "_ddl (id INT PRIMARY KEY)");
-    Object createdKind = com.jayway.jsonpath.JsonPath.read(body(created), "$.kind");
-    Object createdAffected = com.jayway.jsonpath.JsonPath.read(body(created), "$.affectedRows");
+    Object createdKind = JsonPath.read(body(created), "$.kind");
+    Object createdAffected = JsonPath.read(body(created), "$.affectedRows");
     assertThat(createdKind).isEqualTo("UPDATE");
     assertThat(createdAffected).isNull();
 
@@ -258,7 +259,7 @@ class SqlExecutionMySqlIntegrationTest {
             .andExpect(jsonPath("$.totalPages").value(3))
             .andExpect(jsonPath("$.hasNextPage").value(page < 3))
             .andReturn();
-        List<List<Integer>> rows = com.jayway.jsonpath.JsonPath.read(body(result), "$.rows");
+        List<List<Integer>> rows = JsonPath.read(body(result), "$.rows");
         rows.forEach(row -> ids.add(row.get(0)));
       }
       assertThat(ids).containsExactlyElementsOf(IntStream.rangeClosed(1, 25).boxed().toList());
