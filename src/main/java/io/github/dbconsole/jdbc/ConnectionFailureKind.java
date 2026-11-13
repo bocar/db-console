@@ -21,7 +21,9 @@ public enum ConnectionFailureKind {
     if (sqlState != null && sqlState.startsWith("28")) {
       return AUTHENTICATION;
     }
-    String message = exception.getMessage() == null ? "" : exception.getMessage().toLowerCase(Locale.ROOT);
+    String rawMessage = exception.getMessage();
+    String message =
+        (rawMessage == null ? "" : rawMessage).toLowerCase(Locale.ROOT);
     if (message.contains("access denied")
         || message.contains("用户名或密码")
         || message.contains("登录失败")

@@ -64,9 +64,11 @@ class DataSourceRegistryMySqlIntegrationTest {
     @Bean
     @Primary
     CredentialSource testCredentialSource() {
+      // env 缺失时返回占位值让上下文可启动，测试体由 assumeTrue 跳过
       return ref -> {
         if ("DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD".equals(ref)) {
-          return System.getenv(ref);
+          String value = System.getenv(ref);
+          return value != null ? value : "placeholder-credential";
         }
         return "definitely-not-the-password";
       };

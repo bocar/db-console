@@ -11,7 +11,7 @@ const pageSize = ref(20)
 
 /**
  * 结果区（F-08/F-11）：持有本次已加载的结果。
- * 分页当前是对已加载数据的本地视图；后端分页在分页票接入。
+ * 分页当前是对已加载数据的本地视图；后端分页在 T11 接入（ADR-0002）。
  */
 export function useResults() {
   const hasResult = computed(() => queryResult.value !== null || updateResult.value !== null)

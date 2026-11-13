@@ -191,7 +191,7 @@ export class MockApiClient implements ApiClient {
 
   private requireSource(id: string): void {
     if (!this.availableSources.some((source) => source.id === id)) {
-      throw new ApiClientError('REQUEST_FAILED', '未知数据源标识', 404)
+      throw new ApiClientError('UNKNOWN_DATA_SOURCE', '未知数据源标识，请求已拒绝', 404)
     }
   }
 

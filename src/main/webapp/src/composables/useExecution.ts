@@ -1,6 +1,5 @@
 import { ref } from 'vue'
 import { useApiClient } from '../api/client'
-import { ApiClientError } from '../api/http-client'
 import type { ConfirmationRequired } from '../types'
 import { useToast } from './useToast'
 import type { useDataSources } from './useDataSources'
@@ -71,13 +70,16 @@ export function useExecution(deps: ExecutionDeps) {
         deps.results.showUpdate(outcome)
         deps.transaction.markPending(sourceId)
         toast.notify('执行成功，变更尚未提交。')
-      } else {
+      } else if (outcome.affectedRows === null) {
         deps.results.showUpdate(outcome)
         toast.notify('语句已在独立连接执行并生效。')
+      } else {
+        deps.results.showUpdate(outcome)
+        toast.notify('执行成功，变更已生效。')
       }
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : '执行失败。'
-      toast.notify(error instanceof ApiClientError ? error.message : message)
+      toast.notify(message)
     } finally {
       isRunning.value = false
       canceling.value = false

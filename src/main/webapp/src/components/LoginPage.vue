@@ -440,23 +440,6 @@ const submit = async () => {
   color: var(--danger);
 }
 
-.prototype-note {
-  margin-block-start: 24px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--muted);
-  background: var(--surface-subtle);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.prototype-note span {
-  margin-inline-end: 7px;
-  color: var(--accent);
-  font-weight: 600;
-}
-
 .security-note {
   margin-block-start: 30px;
   color: var(--faint);

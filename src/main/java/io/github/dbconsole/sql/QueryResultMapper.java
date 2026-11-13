@@ -47,8 +47,9 @@ final class QueryResultMapper {
   /**
    * 单元格传输值：Long/BigInteger/BigDecimal 转字符串（超出 JS 安全整数精度），
    * 时间转文本，二进制转 Base64，NULL 与空字符串保持区分。
+   * 读取失败按 SQLException 上抛，由执行层统一映射。
    */
-  static Object mapValue(Object value) {
+  static Object mapValue(Object value) throws SQLException {
     if (value == null) {
       return null;
     }
@@ -74,11 +75,7 @@ final class QueryResultMapper {
       return Base64.getEncoder().encodeToString(bytes);
     }
     if (value instanceof SerialBlob blob) {
-      try {
-        return Base64.getEncoder().encodeToString(blob.getBytes(1, (int) blob.length()));
-      } catch (SQLException exception) {
-        return "<binary>";
-      }
+      return Base64.getEncoder().encodeToString(blob.getBytes(1, (int) blob.length()));
     }
     if (value instanceof String || value instanceof Integer || value instanceof Short
         || value instanceof Byte || value instanceof Boolean) {

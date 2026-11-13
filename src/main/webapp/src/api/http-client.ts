@@ -17,6 +17,11 @@ export type ApiErrorCode =
   | 'NETWORK_ERROR'
   | 'REQUEST_FAILED'
   | 'TRANSACTION_OPEN'
+  | 'UNKNOWN_DATA_SOURCE'
+  | 'INVALID_SQL'
+  | 'OUT_OF_SCOPE'
+  | 'SQL_TOO_LONG'
+  | 'DATABASE_ERROR'
 
 /** 带错误码的 API 异常：code 供前端分派，message 面向用户。 */
 export class ApiClientError extends Error {
@@ -38,6 +43,11 @@ const KNOWN_ERROR_CODES: readonly string[] = [
   'NETWORK_ERROR',
   'REQUEST_FAILED',
   'TRANSACTION_OPEN',
+  'UNKNOWN_DATA_SOURCE',
+  'INVALID_SQL',
+  'OUT_OF_SCOPE',
+  'SQL_TOO_LONG',
+  'DATABASE_ERROR',
 ]
 
 function toErrorCode(value: unknown): ApiErrorCode {

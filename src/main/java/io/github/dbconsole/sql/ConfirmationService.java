@@ -9,8 +9,9 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * 执行确认凭据（F-09）：令牌由「登录会话 + 数据源标识 + SQL 文本」计算 HMAC，
- * 任一要素变化即失效；密钥为进程内随机，重启后旧令牌自然作废。
+ * 执行确认凭据（F-09）：令牌由「会话令牌 + 数据源标识 + SQL 文本」计算 HMAC，
+ * 会话、数据源或 SQL 任一变化即失效（登出/过期/换会话都不再可用）；
+ * 密钥为进程内随机，重启后旧令牌自然作废。
  */
 public final class ConfirmationService {
 
@@ -22,21 +23,21 @@ public final class ConfirmationService {
     new SecureRandom().nextBytes(key);
   }
 
-  public String issue(String username, String sourceId, String sql) {
-    return hmac(message(username, sourceId, sql));
+  public String issue(String sessionToken, String sourceId, String sql) {
+    return hmac(message(sessionToken, sourceId, sql));
   }
 
-  public boolean verify(String username, String sourceId, String sql, String token) {
+  public boolean verify(String sessionToken, String sourceId, String sql, String token) {
     if (token == null || token.isBlank()) {
       return false;
     }
     return MessageDigest.isEqual(
-        hmac(message(username, sourceId, sql)).getBytes(StandardCharsets.US_ASCII),
+        hmac(message(sessionToken, sourceId, sql)).getBytes(StandardCharsets.US_ASCII),
         token.getBytes(StandardCharsets.US_ASCII));
   }
 
-  private String message(String username, String sourceId, String sql) {
-    return username + "|" + sourceId + "|" + sha256(sql);
+  private String message(String sessionToken, String sourceId, String sql) {
+    return sessionToken + "|" + sourceId + "|" + sha256(sql);
   }
 
   private static String sha256(String value) {

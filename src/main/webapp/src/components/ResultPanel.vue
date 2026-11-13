@@ -42,12 +42,6 @@ const toggleRow = (index: number) => {
 }
 
 const displayValue = (value: QueryValue) => displayQueryValue(value)
-const statusClass = (value: QueryValue) => {
-  if (value === 'PAID' || value === 'SHIPPED') return 'value-success'
-  if (value === 'PENDING') return 'value-pending'
-  if (value === 'REFUNDED') return 'value-muted'
-  return ''
-}
 
 const copySelection = async () => {
   let text = ''
@@ -146,7 +140,6 @@ const changePage = (event: Event) => {
               <td v-for="(value, columnIndex) in row" :key="`${rowIndex}-${columnIndex}`" :class="{ 'cell-selected': selectedCell?.row === rowIndex && selectedCell.column === columnIndex }" :data-label="columns[columnIndex].name" :title="displayValue(value)" @click="selectedCell = { row: rowIndex, column: columnIndex }">
                 <span v-if="value === null" class="null-value mono">NULL</span>
                 <span v-else-if="value === ''" class="empty-value">空字符串</span>
-                <span v-else-if="columns[columnIndex].name === 'status'" class="status-value" :class="statusClass(value)">{{ value }}</span>
                 <span v-else class="cell-value mono">{{ displayValue(value) }}</span>
               </td>
             </tr>
@@ -460,28 +453,6 @@ const changePage = (event: Event) => {
   color: #99a39e;
   font-size: 9px;
   font-style: italic;
-}
-
-.status-value {
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: var(--code-font);
-  font-size: 9px;
-}
-
-.value-success {
-  color: #2e6d52;
-  background: #e7f2eb;
-}
-
-.value-pending {
-  color: #93611f;
-  background: #fff2de;
-}
-
-.value-muted {
-  color: #68756f;
-  background: #edf0ee;
 }
 
 .empty-result {

@@ -60,7 +60,11 @@ class SqlExecutionMySqlIntegrationTest {
     @Bean
     @Primary
     CredentialSource testCredentialSource() {
-      return ref -> System.getenv(ref);
+      // env 缺失时返回占位值让上下文可启动，测试体由 assumeTrue 跳过
+      return ref -> {
+        String value = System.getenv(ref);
+        return value != null ? value : "placeholder-credential";
+      };
     }
   }
 

@@ -41,7 +41,7 @@ public class SqlExecutionService {
     this.properties = properties;
   }
 
-  public SqlResponses execute(String username, SqlRequest request) {
+  public SqlResponses execute(String sessionToken, SqlRequest request) {
     if (request.sql().length() > properties.execution().maxSqlLength()) {
       throw new SqlRejectException("SQL_TOO_LONG", "SQL 长度超过上限");
     }
@@ -60,12 +60,13 @@ public class SqlExecutionService {
         ConfirmationDecision.evaluate(source.environment(), statement);
     if (requirement != ConfirmationDecision.Requirement.NOT_REQUIRED) {
       boolean verified =
-          confirmations.verify(username, source.id(), request.sql(), request.confirmationToken());
+          confirmations.verify(
+              sessionToken, source.id(), request.sql(), request.confirmationToken());
       if (!verified) {
         return new SqlResponses.ConfirmationRequired(
             requirement.name(),
             statement.kind().isImplicitCommitDdl(),
-            confirmations.issue(username, source.id(), request.sql()));
+            confirmations.issue(sessionToken, source.id(), request.sql()));
       }
     }
     return run(source, request.sql(), statement);

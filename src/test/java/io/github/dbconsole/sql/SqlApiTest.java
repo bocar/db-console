@@ -152,6 +152,25 @@ class SqlApiTest {
   }
 
   @Test
+  @DisplayName("另一会话不能复用本会话的确认令牌（F-09 会话绑定）")
+  void confirmationTokenRejectedAcrossSessions() throws Exception {
+    MvcResult first = execute("UPDATE dbconsole_test_t SET name = 'x'", null);
+    String token = JsonPath.read(first.getResponse().getContentAsString(), "$.confirmationToken");
+    Cookie otherSession = AuthTestSupport.loginSession(mockMvc);
+
+    mockMvc
+        .perform(
+            post("/api/sql/execute")
+                .cookie(otherSession)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"sourceId\":\"mysql-work-note\",\"sql\":\"UPDATE dbconsole_test_t SET name = 'x'\",\"confirmationToken\":\"%s\"}"
+                        .formatted(token)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"));
+  }
+
+  @Test
   @DisplayName("未登录执行请求返回 401")
   void unauthenticatedExecutionRejected() throws Exception {
     mockMvc

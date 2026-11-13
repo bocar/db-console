@@ -13,8 +13,8 @@ describe('MockApiClient', () => {
   it('rejects unknown datasource ids', async () => {
     const client = new MockApiClient(0)
 
-    await expect(client.dataSources.testConnection('no-such-source')).rejects.toMatchObject({ code: 'REQUEST_FAILED' })
-    await expect(client.metadata.tables('no-such-source')).rejects.toMatchObject({ code: 'REQUEST_FAILED' })
+    await expect(client.dataSources.testConnection('no-such-source')).rejects.toMatchObject({ code: 'UNKNOWN_DATA_SOURCE' })
+    await expect(client.metadata.tables('no-such-source')).rejects.toMatchObject({ code: 'UNKNOWN_DATA_SOURCE' })
   })
 
   it('runs plain queries without confirmation and records history', async () => {

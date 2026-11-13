@@ -19,6 +19,9 @@ public final class SessionAuthInterceptor implements HandlerInterceptor {
   /** 认证通过后写入请求属性的登录账号名。 */
   public static final String USERNAME_ATTRIBUTE = "auth.username";
 
+  /** 认证通过后写入请求属性的会话令牌（确认凭据绑定用，F-09）。 */
+  public static final String SESSION_TOKEN_ATTRIBUTE = "auth.sessionToken";
+
   private final SessionService sessions;
   private final ObjectMapper objectMapper;
 
@@ -31,9 +34,11 @@ public final class SessionAuthInterceptor implements HandlerInterceptor {
   public boolean preHandle(
       HttpServletRequest request, HttpServletResponse response, Object handler)
       throws IOException {
-    Optional<String> username = sessions.authenticate(sessionToken(request));
+    String token = sessionToken(request);
+    Optional<String> username = sessions.authenticate(token);
     if (username.isPresent()) {
       request.setAttribute(USERNAME_ATTRIBUTE, username.get());
+      request.setAttribute(SESSION_TOKEN_ATTRIBUTE, token);
       return true;
     }
     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

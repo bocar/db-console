@@ -144,15 +144,6 @@ const changeSource = (event: Event) => {
   font-size: 12px;
 }
 
-.preview-label {
-  margin-inline-end: 12px;
-  padding: 3px 7px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--muted);
-  background: var(--surface-subtle);
-}
-
 .user-avatar {
   inline-size: 27px;
   block-size: 27px;
@@ -236,17 +227,9 @@ const changeSource = (event: Event) => {
   color: var(--muted);
 }
 
-.source-type,
-.schema-name {
+.source-type {
   color: var(--muted);
   font-size: 12px;
-}
-
-.source-divider {
-  inline-size: 1px;
-  block-size: 17px;
-  margin-inline: 5px;
-  background: var(--line);
 }
 
 .connection-actions {
@@ -254,21 +237,6 @@ const changeSource = (event: Event) => {
   display: flex;
   align-items: center;
   gap: 15px;
-}
-
-.connection-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--success);
-  font-size: 12px;
-}
-
-.connection-dot {
-  inline-size: 6px;
-  block-size: 6px;
-  border-radius: 50%;
-  background: var(--success);
 }
 
 .test-button {
@@ -295,9 +263,7 @@ const changeSource = (event: Event) => {
     margin-inline-end: 24px;
   }
 
-  .source-type,
-  .source-divider,
-  .preview-label {
+  .source-type {
     display: none;
   }
 
@@ -313,9 +279,7 @@ const changeSource = (event: Event) => {
 
   .app-nav,
   .user-name,
-  .schema-name,
   .source-icon,
-  .connection-status,
   .logout-button span {
     display: none;
   }

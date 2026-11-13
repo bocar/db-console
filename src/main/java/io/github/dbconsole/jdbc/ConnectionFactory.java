@@ -9,6 +9,9 @@ import java.util.Properties;
 /**
  * 按数据源配置建立 JDBC 连接的统一入口：连接与读取超时统一注入，
  * 连接测试、语句执行与手动事务共用，避免各处重复拼接驱动属性。
+ *
+ * <p>connectTimeout/socketTimeout 为 MySQL 驱动属性名（毫秒），DM8 侧的超时属性
+ * 随方言层（T04 后续）统一；此处对不识别的驱动属性会被安全忽略。
  */
 public final class ConnectionFactory {
 

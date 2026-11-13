@@ -299,7 +299,6 @@ onUnmounted(() => {
       </main>
     </div>
     <footer class="status-bar">
-      <span class="status-connected"><span></span>已连接</span>
       <span>{{ selectedSource ? displayDatabaseType(selectedSource.databaseType) : '' }}</span>
       <span class="status-schema"><Table2 :size="11" />{{ selectedTableName }}</span>
       <span class="status-right">UTF-8</span>
