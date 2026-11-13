@@ -20,6 +20,9 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
       execute: async () => {
         throw new Error('fakeApiClient: sql.execute 未在用例中覆盖')
       },
+      page: async () => {
+        throw new Error('fakeApiClient: sql.page 未在用例中覆盖')
+      },
       cancel: async () => undefined,
     },
     transaction: {

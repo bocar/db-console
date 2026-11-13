@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -135,7 +136,7 @@ class SqlExecutionServiceTest {
   void queryReadFailureRecordsSingleFailedAudit() throws Exception {
     String sql = "SELECT * FROM dbconsole_test_t";
     ResultSet resultSet = mock(ResultSet.class);
-    when(jdbcStatement.execute(sql)).thenReturn(true);
+    when(jdbcStatement.execute(anyString())).thenReturn(true);
     when(jdbcStatement.getResultSet()).thenReturn(resultSet);
     when(resultSet.getMetaData()).thenThrow(new SQLException("read failed", "42000"));
 
@@ -153,7 +154,7 @@ class SqlExecutionServiceTest {
     String sql = "SELECT name FROM dbconsole_test_t WHERE name = 'sql-secret'";
     ResultSet resultSet = mock(ResultSet.class);
     ResultSetMetaData metadata = mock(ResultSetMetaData.class);
-    when(jdbcStatement.execute(sql)).thenReturn(true);
+    when(jdbcStatement.execute(anyString())).thenReturn(true);
     when(jdbcStatement.getResultSet()).thenReturn(resultSet);
     when(resultSet.getMetaData()).thenReturn(metadata);
     when(metadata.getColumnCount()).thenReturn(1);

@@ -5,6 +5,7 @@ import type {
   DataSourceInfo,
   ExecutionOutcome,
   HistoryEntry,
+  QueryResult,
   SessionInfo,
   TableDefinition,
   TransactionStatus,
@@ -32,6 +33,7 @@ export interface ApiClient {
   }
   sql: {
     execute(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>
+    page(sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult>
     cancel(sourceId: string): Promise<void>
   }
   transaction: {

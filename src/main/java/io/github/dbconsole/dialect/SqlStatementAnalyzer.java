@@ -73,6 +73,33 @@ public final class SqlStatementAnalyzer {
     return new SqlStatement(kind, hasOuterWhere);
   }
 
+  /** 移除已校验语句的唯一终结分号，保留原始空白与尾随注释。 */
+  public String removeTerminator(String sql) {
+    for (SqlTokenizer.Token token : tokenizer.tokenize(sql)) {
+      if (token.type() == SqlTokenizer.TokenType.SEMICOLON) {
+        return sql.substring(0, token.start()) + sql.substring(token.start() + 1);
+      }
+    }
+    return sql;
+  }
+
+  /** 已有顶层分页或锁定子句时，分页须使用派生表保留原子句边界。 */
+  public boolean requiresDerivedTableForPagination(String sql) {
+    int depth = 0;
+    for (SqlTokenizer.Token token : tokenizer.tokenize(sql)) {
+      if (token.type() == SqlTokenizer.TokenType.LPAREN) {
+        depth++;
+      } else if (token.type() == SqlTokenizer.TokenType.RPAREN) {
+        depth = Math.max(0, depth - 1);
+      } else if (depth == 0
+          && (token.isWord("LIMIT") || token.isWord("OFFSET") || token.isWord("FETCH")
+              || token.isWord("FOR"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private List<List<SqlTokenizer.Token>> splitBySemicolon(List<SqlTokenizer.Token> tokens) {
     List<List<SqlTokenizer.Token>> parts = new ArrayList<>();
     List<SqlTokenizer.Token> current = new ArrayList<>();

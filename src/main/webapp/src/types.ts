@@ -72,6 +72,12 @@ export interface QueryResult {
   rows: QueryRow[]
   elapsedMs: number
   truncated: boolean
+  /** 服务端分页元数据；DESC 等非分页查询可为空。 */
+  page?: number | null
+  pageSize?: number | null
+  hasNextPage?: boolean | null
+  totalRows?: number | null
+  totalPages?: number | null
 }
 
 export interface UpdateResult {

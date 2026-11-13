@@ -7,6 +7,7 @@ import type {
   ExecutionOutcome,
   HistoryEntry,
   QueryColumn,
+  QueryResult,
   QueryRow,
   SessionInfo,
   TableDefinition,
@@ -163,6 +164,13 @@ export class MockApiClient implements ApiClient {
           reject(new Error('查询已取消'))
         }
       }),
+    page: async (sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult> => {
+      this.requireSource(sourceId)
+      if (!/^(select|with)\b/i.test(sql.trim())) {
+        throw new ApiClientError('PAGINATION_NOT_ALLOWED', '只有只读查询支持分页', 422)
+      }
+      return this.queryResult(page, pageSize)
+    },
     cancel: async (sourceId: string): Promise<void> => {
       this.requireSource(sourceId)
       this.pendingExecution?.()
@@ -230,6 +238,23 @@ export class MockApiClient implements ApiClient {
     return new Promise((resolve) => setTimeout(resolve, scaled))
   }
 
+  private queryResult(page: number, pageSize: number): QueryResult {
+    const totalRows = this.queryRows.length
+    const offset = (page - 1) * pageSize
+    return {
+      kind: 'QUERY',
+      columns: this.queryColumns,
+      rows: this.queryRows.slice(offset, offset + pageSize),
+      elapsedMs: 0,
+      truncated: false,
+      page,
+      pageSize,
+      hasNextPage: offset + pageSize < totalRows,
+      totalRows,
+      totalPages: Math.ceil(totalRows / pageSize),
+    }
+  }
+
   private resolveExecution(
     sourceId: string,
     sql: string,
@@ -275,6 +300,6 @@ export class MockApiClient implements ApiClient {
       this.transactionPendingBySource.set(sourceId, true)
       return { kind: 'UPDATE', affectedRows: 1, elapsedMs, uncommitted: true, implicitCommitDdl: false }
     }
-    return { kind: 'QUERY', columns: this.queryColumns, rows: this.queryRows, elapsedMs, truncated: false }
+    return this.queryResult(1, 100)
   }
 }

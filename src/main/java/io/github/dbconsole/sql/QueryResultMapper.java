@@ -23,6 +23,14 @@ final class QueryResultMapper {
       ResultSet resultSet,
       io.github.dbconsole.config.DbConsoleProperties.ExecutionProperties limits,
       long elapsedMs) throws SQLException {
+    return map(resultSet, limits, elapsedMs, limits.maxPageSize());
+  }
+
+  static SqlResponses.QueryResult map(
+      ResultSet resultSet,
+      io.github.dbconsole.config.DbConsoleProperties.ExecutionProperties limits,
+      long elapsedMs,
+      int maxRows) throws SQLException {
     ResultSetMetaData metadata = resultSet.getMetaData();
     int columnCount = metadata.getColumnCount();
     List<SqlResponses.QueryColumn> columns = new ArrayList<>(columnCount);
@@ -33,10 +41,11 @@ final class QueryResultMapper {
     }
     List<List<Object>> rows = new ArrayList<>();
     boolean truncated = false;
+    boolean hasNextPage = false;
     long totalBytes = 0;
     while (resultSet.next()) {
-      if (rows.size() >= limits.maxPageSize()) {
-        truncated = true;
+      if (rows.size() >= maxRows) {
+        hasNextPage = true;
         break;
       }
       List<Object> row = new ArrayList<>(columnCount);
@@ -56,7 +65,8 @@ final class QueryResultMapper {
       }
       rows.add(row);
     }
-    return new SqlResponses.QueryResult(columns, rows, elapsedMs, truncated);
+    return new SqlResponses.QueryResult("QUERY", columns, rows, elapsedMs, truncated,
+        null, null, hasNextPage, null, null);
   }
 
   /**

@@ -5,6 +5,7 @@ import type {
   DataSourceInfo,
   ExecutionOutcome,
   HistoryEntry,
+  QueryResult,
   SessionInfo,
   TableDefinition,
   TransactionStatus,
@@ -23,6 +24,8 @@ const API_ERROR_CODES = [
   'OUT_OF_SCOPE',
   'SQL_TOO_LONG',
   'DATABASE_ERROR',
+  'INVALID_PAGE_SIZE',
+  'PAGINATION_NOT_ALLOWED',
 ] as const
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number]
@@ -129,6 +132,8 @@ export class HttpApiClient implements ApiClient {
         sql,
         confirmationToken,
       }),
+    page: (sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult> =>
+      this.request<QueryResult>('POST', '/api/sql/page', { sourceId, sql, page, pageSize }),
     cancel: (sourceId: string): Promise<void> =>
       this.request<void>('POST', `/api/sql/${encodeURIComponent(sourceId)}/cancel`),
   }

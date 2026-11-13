@@ -26,4 +26,12 @@ public class SqlController {
       @Valid @RequestBody SqlRequest request) {
     return executionService.execute(sessionToken, username, request);
   }
+
+  @PostMapping("/page")
+  public SqlResponses page(
+      @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
+      @RequestAttribute(SessionAuthInterceptor.USERNAME_ATTRIBUTE) String username,
+      @Valid @RequestBody SqlPageRequest request) {
+    return executionService.page(sessionToken, username, request);
+  }
 }

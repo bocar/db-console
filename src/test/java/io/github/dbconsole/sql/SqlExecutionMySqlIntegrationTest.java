@@ -12,6 +12,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -226,5 +229,53 @@ class SqlExecutionMySqlIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.columns[0].name").value("id"))
         .andExpect(jsonPath("$.rows.length()").value(0));
+  }
+
+  @Test
+  void orderedFixedRowsContinueAcrossPagesWithoutGapsOrDuplicates() throws Exception {
+    String table = TABLE + "_page";
+    try (Connection connection = mysqlConnection();
+        Statement statement = connection.createStatement()) {
+      statement.execute("DROP TABLE IF EXISTS " + table);
+      statement.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY)");
+      for (int id = 1; id <= 25; id++) {
+        statement.addBatch("INSERT INTO " + table + " VALUES (" + id + ")");
+      }
+      statement.executeBatch();
+    }
+    try {
+      String sql = "SELECT id FROM " + table + " ORDER BY id";
+      List<Integer> ids = new ArrayList<>();
+      for (int page = 1; page <= 3; page++) {
+        MvcResult result = mockMvc.perform(post("/api/sql/page")
+                .cookie(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"sourceId\":\"mysql-work-note\",\"sql\":%s,"
+                    + "\"page\":%d,\"pageSize\":10}".formatted(jsonText(sql), page)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.page").value(page))
+            .andExpect(jsonPath("$.totalRows").value(25))
+            .andExpect(jsonPath("$.totalPages").value(3))
+            .andExpect(jsonPath("$.hasNextPage").value(page < 3))
+            .andReturn();
+        List<List<Integer>> rows = com.jayway.jsonpath.JsonPath.read(body(result), "$.rows");
+        rows.forEach(row -> ids.add(row.get(0)));
+      }
+      assertThat(ids).containsExactlyElementsOf(IntStream.rangeClosed(1, 25).boxed().toList());
+      mockMvc.perform(post("/api/sql/execute")
+              .cookie(session)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"sourceId\":\"mysql-work-note\",\"sql\":%s}".formatted(
+                  jsonText("SELECT a.id, b.id FROM " + table + " a JOIN " + table
+                      + " b ON a.id = b.id WHERE a.id = 1"))))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.rows[0][0]").value(1))
+          .andExpect(jsonPath("$.rows[0][1]").value(1));
+    } finally {
+      try (Connection connection = mysqlConnection();
+          Statement statement = connection.createStatement()) {
+        statement.execute("DROP TABLE IF EXISTS " + table);
+      }
+    }
   }
 }

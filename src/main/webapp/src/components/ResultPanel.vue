@@ -10,7 +10,11 @@ const props = defineProps<{
   selectedTable?: TableDefinition
   page: number
   pageSize: number
-  totalRows: number
+  totalRows: number | null
+  totalPages?: number | null
+  hasNextPage?: boolean
+  paginated?: boolean
+  paging?: boolean
   elapsed: number
   activeTab: 'result' | 'structure' | 'info'
   transactionPending: boolean
@@ -29,7 +33,10 @@ const emit = defineEmits<{
 
 const selectedRows = ref(new Set<number>())
 const selectedCell = ref<{ row: number; column: number } | null>({ row: 0, column: 1 })
-const pageCount = computed(() => Math.max(1, Math.ceil(props.totalRows / props.pageSize)))
+const pageCount = computed(() => Math.max(1, props.totalPages ?? props.page + (props.hasNextPage ? 1 : 0)))
+const nextDisabled = computed(() =>
+  props.paging || (props.totalPages == null ? !props.hasNextPage : props.page >= pageCount.value),
+)
 const selectionCount = computed(() => selectedRows.value.size)
 
 watch(() => props.rows, () => {
@@ -96,7 +103,7 @@ const changePage = (event: Event) => {
     <div class="result-toolbar">
       <div class="result-tabs" role="tablist" aria-label="结果视图">
         <button type="button" role="tab" :aria-selected="activeTab === 'result'" :class="{ active: activeTab === 'result' }" @click="emit('tabChange', 'result')">
-          <Table2 :size="14" />查询结果<span class="tab-count">{{ totalRows }}</span>
+          <Table2 :size="14" />查询结果<span class="tab-count">{{ totalRows ?? rows.length }}</span>
         </button>
         <button type="button" role="tab" :aria-selected="activeTab === 'structure'" :class="{ active: activeTab === 'structure' }" @click="emit('tabChange', 'structure')">
           <Code2 :size="14" />表结构<span v-if="selectedTable" class="tab-name mono">{{ selectedTable.name }}</span>
@@ -151,22 +158,25 @@ const changePage = (event: Event) => {
           </tbody>
         </table>
       </div>
-      <div class="pagination-bar">
-        <span>共 {{ totalRows }} 行</span>
+      <div v-if="paginated" class="pagination-bar">
+        <span v-if="totalRows !== null">共 {{ totalRows }} 行</span>
+        <span v-else>总数未知</span>
+        <span v-if="paging" class="loaded-note">正在加载…</span>
         <span class="loaded-note">数据库分页</span>
         <div class="page-controls">
           <label for="page-size">每页</label>
-          <select id="page-size" :value="pageSize" name="page-size" @change="emit('pageSizeChange', Number(($event.target as HTMLSelectElement).value))">
+          <select id="page-size" :value="pageSize" name="page-size" :disabled="paging" @change="emit('pageSizeChange', Number(($event.target as HTMLSelectElement).value))">
             <option :value="10">10</option>
             <option :value="20">20</option>
             <option :value="50">50</option>
+            <option :value="100">100</option>
           </select>
           <span class="page-size-unit">行</span>
-          <button type="button" class="icon-button" aria-label="上一页" :disabled="page <= 1" @click="emit('pageChange', page - 1)"><ChevronLeft :size="16" /></button>
+          <button type="button" class="icon-button" aria-label="上一页" :disabled="page <= 1 || paging" @click="emit('pageChange', page - 1)"><ChevronLeft :size="16" /></button>
           <label class="visually-hidden" for="page-number">页码</label>
-          <input id="page-number" class="page-number mono" type="number" name="page-number" min="1" :max="pageCount" :value="page" @change="changePage" />
-          <span>/ {{ pageCount }} 页</span>
-          <button type="button" class="icon-button" aria-label="下一页" :disabled="page >= pageCount" @click="emit('pageChange', page + 1)"><ChevronRight :size="16" /></button>
+          <input id="page-number" class="page-number mono" type="number" name="page-number" min="1" :max="totalPages ?? undefined" :value="page" :disabled="paging" @change="changePage" />
+          <span>/ {{ totalPages == null ? '?' : pageCount }} 页</span>
+          <button type="button" class="icon-button" aria-label="下一页" :disabled="nextDisabled" @click="emit('pageChange', page + 1)"><ChevronRight :size="16" /></button>
         </div>
       </div>
     </template>

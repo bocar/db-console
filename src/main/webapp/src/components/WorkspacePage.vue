@@ -36,7 +36,7 @@ const { sources, selectedSourceId, selectedSource, testing } = dataSources
 const objectTree = useObjectTree()
 const { tables, selectedTableName, selectedTable, loading: refreshing } = objectTree
 const results = useResults()
-const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elapsedMs, hasResult, updateResult, queryResult } = results
+const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, totalPages, hasNextPage, isPaging, elapsedMs, hasResult, updateResult, queryResult } = results
 const transaction = useManualTransaction()
 const historyStore = useSqlHistory()
 const { load: loadHistory, clear: clearHistoryFor } = historyStore
@@ -297,6 +297,10 @@ onUnmounted(() => {
           :page="page"
           :page-size="pageSize"
           :total-rows="totalRows"
+          :total-pages="totalPages"
+          :has-next-page="hasNextPage"
+          :paginated="queryResult?.page != null"
+          :paging="isPaging"
           :elapsed="elapsedMs"
           :active-tab="activeTab"
           :transaction-pending="transactionActive"
@@ -305,7 +309,7 @@ onUnmounted(() => {
           :update-info="updateResult ?? undefined"
           :truncated="queryResult?.truncated ?? false"
           @tab-change="activeTab = $event"
-          @page-change="page = $event"
+          @page-change="results.changePage($event)"
           @page-size-change="results.changePageSize($event)"
           @notify="notify"
         />
@@ -316,7 +320,7 @@ onUnmounted(() => {
       <span class="status-schema"><Table2 :size="11" />{{ selectedTableName }}</span>
       <span class="status-right">UTF-8</span>
       <span>SQL</span>
-      <span>结果视图分页</span>
+      <span>服务端分页</span>
     </footer>
     <ConfirmDialog
       ref="confirmDialog"

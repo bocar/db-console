@@ -21,7 +21,7 @@ final class SqlTokenizer {
     OTHER
   }
 
-  record Token(TokenType type, String text) {
+  record Token(TokenType type, String text, int start) {
     boolean isWord(String keyword) {
       return type == TokenType.WORD && text.equalsIgnoreCase(keyword);
     }
@@ -69,7 +69,7 @@ final class SqlTokenizer {
               case ',' -> TokenType.COMMA;
               default -> TokenType.OTHER;
             };
-        tokens.add(new Token(type, String.valueOf(current)));
+        tokens.add(new Token(type, String.valueOf(current), index));
         index++;
       }
     }
@@ -79,14 +79,14 @@ final class SqlTokenizer {
   private int consumeLineComment(String sql, int start, List<Token> tokens) {
     int end = sql.indexOf('\n', start);
     int stop = end == -1 ? sql.length() : end;
-    tokens.add(new Token(TokenType.COMMENT, sql.substring(start, stop)));
+    tokens.add(new Token(TokenType.COMMENT, sql.substring(start, stop), start));
     return stop;
   }
 
   private int consumeBlockComment(String sql, int start, List<Token> tokens) {
     int end = sql.indexOf("*/", start + 2);
     int stop = end == -1 ? sql.length() : end + 2;
-    tokens.add(new Token(TokenType.COMMENT, sql.substring(start, stop)));
+    tokens.add(new Token(TokenType.COMMENT, sql.substring(start, stop), start));
     return stop;
   }
 
@@ -106,12 +106,12 @@ final class SqlTokenizer {
           index += 2;
           continue;
         }
-        tokens.add(new Token(type, sql.substring(start, index + 1)));
+        tokens.add(new Token(type, sql.substring(start, index + 1), start));
         return index + 1;
       }
       index++;
     }
-    tokens.add(new Token(type, sql.substring(start)));
+    tokens.add(new Token(type, sql.substring(start), start));
     return length;
   }
 
@@ -121,7 +121,7 @@ final class SqlTokenizer {
     while (index < length && isWordCharacter(sql.charAt(index))) {
       index++;
     }
-    tokens.add(new Token(TokenType.WORD, sql.substring(start, index)));
+    tokens.add(new Token(TokenType.WORD, sql.substring(start, index), start));
     return index;
   }
 

@@ -65,4 +65,24 @@ describe('ResultPanel', () => {
     const ddl = mountPanel({ activeTab: 'info', updateInfo: withoutCount })
     expect(ddl.text()).toContain('驱动未提供行数')
   })
+
+  it('uses server total pages and disables next on the last page', () => {
+    const wrapper = mountPanel({ page: 2, totalRows: 2, totalPages: 2, hasNextPage: false, paginated: true })
+
+    expect(wrapper.text()).toContain('/ 2 页')
+    expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('allows the next page with unknown totals when the server has more rows', () => {
+    const wrapper = mountPanel({ totalRows: null, totalPages: null, hasNextPage: true, paginated: true })
+
+    expect(wrapper.text()).toContain('总数未知')
+    expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('hides pagination for non-query outcomes', () => {
+    const wrapper = mountPanel({ paginated: false })
+
+    expect(wrapper.find('.pagination-bar').exists()).toBe(false)
+  })
 })

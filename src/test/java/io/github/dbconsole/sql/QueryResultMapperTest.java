@@ -64,15 +64,16 @@ class QueryResultMapperTest {
   }
 
   @Test
-  @DisplayName("超过行上限时截断并标记 truncated")
-  void truncatesBeyondMaxRows() throws Exception {
+  @DisplayName("超过页行数时标记 hasNextPage 而不误报内容截断")
+  void marksNextPageWithoutContentTruncation() throws Exception {
     Object[][] data = {{1}, {2}, {3}, {4}};
     ResultSet resultSet = resultSet(data, "id");
 
     SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(2, 10_000_000, 65_536), 1);
 
     assertThat(result.rows()).hasSize(2);
-    assertThat(result.truncated()).isTrue();
+    assertThat(result.truncated()).isFalse();
+    assertThat(result.hasNextPage()).isTrue();
   }
 
 

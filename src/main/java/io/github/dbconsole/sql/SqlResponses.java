@@ -11,12 +11,24 @@ public sealed interface SqlResponses {
       List<QueryColumn> columns,
       List<List<Object>> rows,
       long elapsedMs,
-      boolean truncated)
+      boolean truncated,
+      Integer page,
+      Integer pageSize,
+      Boolean hasNextPage,
+      Long totalRows,
+      Integer totalPages)
       implements SqlResponses {
 
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated) {
-      this("QUERY", columns, rows, elapsedMs, truncated);
+      this("QUERY", columns, rows, elapsedMs, truncated, null, null, null, null, null);
+    }
+
+    public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
+        boolean truncated, int page, int pageSize, boolean hasNextPage,
+        Long totalRows, Integer totalPages) {
+      this("QUERY", columns, rows, elapsedMs, truncated, page, pageSize, hasNextPage,
+          totalRows, totalPages);
     }
   }
 

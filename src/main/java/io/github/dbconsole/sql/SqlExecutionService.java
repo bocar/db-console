@@ -92,6 +92,11 @@ public class SqlExecutionService {
       return auditExecution(source, request.sql(), username,
           () -> describeAsQuery(source, request.sql()));
     }
+    if (statement.kind() == StatementKind.SELECT) {
+      return auditExecution(source, request.sql(), username,
+          () -> queryPage(source, request.sql(), 1, properties.execution().defaultPageSize(),
+              sessionToken, transactionConnection, true, analyzer));
+    }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
     if (requirement != ConfirmationDecision.Requirement.NOT_REQUIRED) {
@@ -107,6 +112,30 @@ public class SqlExecutionService {
     }
     return auditExecution(source, request.sql(), username,
         () -> run(source, request.sql(), statement, sessionToken, transactionConnection));
+  }
+
+  public SqlResponses page(String sessionToken, String username, SqlPageRequest request) {
+    if (request.sql().length() > properties.execution().maxSqlLength()) {
+      throw new SqlRejectException("SQL_TOO_LONG", "SQL 长度超过上限");
+    }
+    if (request.pageSize() > properties.execution().maxPageSize()) {
+      throw new SqlRejectException("INVALID_PAGE_SIZE", "每页行数超过上限");
+    }
+    ResolvedDataSource source = registry.resolve(request.sourceId());
+    SqlStatementAnalyzer analyzer =
+        SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
+    SqlAnalysisResult analysis = analyzer.analyze(request.sql());
+    if (analysis instanceof RejectedSql rejected) {
+      throw new SqlRejectException("INVALID_SQL", rejected.message());
+    }
+    SqlStatement statement = (SqlStatement) analysis;
+    if (statement.kind() != StatementKind.SELECT) {
+      throw new SqlRejectException("PAGINATION_NOT_ALLOWED", "只有只读查询支持分页");
+    }
+    Connection transactionConnection = transactions.connectionFor(sessionToken, source.id());
+    return auditExecution(source, request.sql(), username,
+        () -> queryPage(source, request.sql(), request.page(), request.pageSize(),
+            sessionToken, transactionConnection, false, analyzer));
   }
 
   private SqlResponses auditExecution(
@@ -160,6 +189,94 @@ public class SqlExecutionService {
               column.comment()));
     }
     return new SqlResponses.QueryResult(columns, rows, 0, false);
+  }
+
+  private SqlResponses queryPage(
+      ResolvedDataSource source,
+      String sql,
+      int page,
+      int pageSize,
+      String sessionToken,
+      Connection transactionConnection,
+      boolean recordHistory,
+      SqlStatementAnalyzer analyzer) {
+    long startedAt = System.nanoTime();
+    String statementSql = analyzer.removeTerminator(sql);
+    boolean inTransaction = transactionConnection != null;
+    Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
+    SqlResponses.QueryResult result = null;
+    try {
+      long offset = ((long) page - 1) * pageSize;
+      String baseSql = analyzer.requiresDerivedTableForPagination(statementSql)
+          ? "SELECT * FROM (" + statementSql + "\n) dbconsole_page"
+          : statementSql;
+      String pagedSql = baseSql + "\nLIMIT " + (pageSize + 1) + " OFFSET " + offset;
+      try (Statement jdbcStatement = connection.createStatement()) {
+        int timeoutSeconds = Math.max(1, (int) properties.execution().timeout().toSeconds());
+        jdbcStatement.setQueryTimeout(timeoutSeconds);
+        if (!jdbcStatement.execute(pagedSql)) {
+          throw new SQLException("查询未返回结果集");
+        }
+        long elapsedMs = elapsedMillisSince(startedAt);
+        log.info("SQL 执行完成 sourceId={} kind={} elapsedMs={}",
+            source.id(), StatementKind.SELECT, elapsedMs);
+        if (recordHistory) {
+          history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
+        }
+        SqlResponses.QueryResult pageResult;
+        try (ResultSet resultSet = jdbcStatement.getResultSet()) {
+          pageResult =
+              QueryResultMapper.map(resultSet, properties.execution(), elapsedMs, pageSize);
+        }
+        result = new SqlResponses.QueryResult(pageResult.columns(), pageResult.rows(), elapsedMs,
+            pageResult.truncated(), page, pageSize, Boolean.TRUE.equals(pageResult.hasNextPage()),
+            null, null);
+      }
+      Long totalRows = tryCount(connection, source.id(), statementSql);
+      if (totalRows != null) {
+        int totalPages = (int) (totalRows / pageSize + (totalRows % pageSize == 0 ? 0 : 1));
+        result = new SqlResponses.QueryResult(result.columns(), result.rows(), result.elapsedMs(),
+            result.truncated(), page, pageSize, result.hasNextPage(), totalRows, totalPages);
+      }
+    } catch (SQLException exception) {
+      if (result != null) {
+        log.warn("JDBC 语句关闭失败 sourceId={} kind={} sqlState={}",
+            source.id(), StatementKind.SELECT, exception.getSQLState());
+        return result;
+      }
+      long elapsedMs = elapsedMillisSince(startedAt);
+      log.warn("SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
+          source.id(), StatementKind.SELECT, exception.getSQLState(), elapsedMs);
+      throw new DatabaseExecutionException(safeMessage(exception), exception);
+    } finally {
+      if (inTransaction) {
+        transactions.touch(sessionToken);
+      } else {
+        try {
+          connection.close();
+        } catch (SQLException closeFailure) {
+          // 关闭失败不影响执行结果
+        }
+      }
+    }
+    return result;
+  }
+
+  private Long tryCount(Connection connection, String sourceId, String sql) {
+    String countSql = "SELECT COUNT(*) FROM (" + sql + "\n) dbconsole_count";
+    try (Statement countStatement = connection.createStatement()) {
+      int timeoutSeconds = Math.max(1, (int) properties.execution().timeout().toSeconds());
+      countStatement.setQueryTimeout(timeoutSeconds);
+      if (!countStatement.execute(countSql)) {
+        return null;
+      }
+      try (ResultSet countResult = countStatement.getResultSet()) {
+        return countResult.next() ? countResult.getLong(1) : null;
+      }
+    } catch (SQLException exception) {
+      log.info("总数统计不可用 sourceId={} sqlState={}", sourceId, exception.getSQLState());
+      return null;
+    }
   }
 
   private SqlResponses run(

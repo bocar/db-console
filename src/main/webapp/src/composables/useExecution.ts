@@ -70,7 +70,7 @@ export function useExecution(deps: ExecutionDeps) {
         return
       }
       if (outcome.kind === 'QUERY') {
-        deps.results.showQuery(outcome)
+        deps.results.showQuery(outcome, sourceId, statement)
         toast.notify('查询已完成，结果已更新。')
       } else if (outcome.uncommitted) {
         deps.results.showUpdate(outcome)

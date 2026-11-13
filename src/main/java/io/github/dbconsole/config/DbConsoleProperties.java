@@ -20,6 +20,9 @@ public record DbConsoleProperties(
     @Valid List<DataSourceProperties> dataSources) {
 
   public DbConsoleProperties {
+    if (execution != null && execution.defaultPageSize() > execution.maxPageSize()) {
+      throw new IllegalArgumentException("default-page-size must not exceed max-page-size");
+    }
     dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);
     long distinctIds = dataSources.stream().map(DataSourceProperties::id).distinct().count();
     if (distinctIds != dataSources.size()) {
