@@ -56,13 +56,12 @@ export function displayQueryValue(value: QueryValue): string {
 /** 确认要求的原因（F-09），从 wire 类型派生。 */
 export type ConfirmationReason = ConfirmationRequired['reason']
 
+const CONFIRMATION_REASON_TEXT: Record<ConfirmationReason, string> = {
+  PRODUCTION_WRITE: '目标环境为生产环境，所有数据变更都必须逐条确认。',
+  MISSING_WHERE: '此更新或删除没有最外层 WHERE 条件，可能影响全表数据。',
+  IMPLICIT_COMMIT_DDL: '此 DDL 会触发隐式提交，成功后无法随事务回滚。',
+}
+
 export function confirmationReasonText(reason: ConfirmationReason): string {
-  switch (reason) {
-    case 'PRODUCTION_WRITE':
-      return '目标环境为生产环境，所有数据变更都必须逐条确认。'
-    case 'MISSING_WHERE':
-      return '此更新或删除没有最外层 WHERE 条件，可能影响全表数据。'
-    case 'IMPLICIT_COMMIT_DDL':
-      return '此 DDL 会触发隐式提交，成功后无法随事务回滚。'
-  }
+  return CONFIRMATION_REASON_TEXT[reason]
 }

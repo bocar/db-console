@@ -2,6 +2,7 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { API_CLIENT_KEY, type ApiClient } from '../api/client'
+import { fakeApiClient } from '../api/test-support'
 import { useDataSources } from './useDataSources'
 import { useResults } from './useResults'
 import { useManualTransaction } from './useManualTransaction'
@@ -17,21 +18,10 @@ const SOURCE: DataSourceInfo = {
 }
 
 function fakeClient(executeImpl: ApiClient['sql']['execute']): ApiClient {
-  return {
-    auth: {
-      login: async () => ({ username: 'admin' }),
-      logout: async () => undefined,
-      session: async () => ({ username: 'admin' }),
-    },
-    dataSources: {
-      list: async () => [SOURCE],
-      testConnection: async () => ({ ok: true, kind: 'NONE', message: '连接正常' }),
-    },
-    metadata: { tables: async () => [] },
-    sql: { execute: executeImpl, cancel: async () => undefined },
-    transaction: { commit: async () => undefined, rollback: async () => undefined },
-    history: { list: async () => [], clear: async () => undefined },
-  }
+  return fakeApiClient({
+    dataSources: { ...fakeApiClient().dataSources, list: async () => [SOURCE] },
+    sql: { ...fakeApiClient().sql, execute: executeImpl },
+  })
 }
 
 function mountExecution(client: ApiClient) {
@@ -85,7 +75,7 @@ describe('useExecution 确认流', () => {
         confirmationToken: 'token-1',
       } as ConfirmationRequired)
       .mockResolvedValueOnce({ kind: 'UPDATE', affectedRows: 3, elapsedMs: 5, uncommitted: false })
-    const handle = await mountExecutionReady(fakeClient(async (id, sql, token) => execute(id, sql, token)))
+    const handle = await mountExecutionReady(fakeClient(execute))
 
     await handle.execute('UPDATE t SET x = 1')
     await flushPromises()

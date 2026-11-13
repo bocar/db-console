@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import LoginPage from './LoginPage.vue'
 import { API_CLIENT_KEY, type ApiClient } from '../api/client'
+import { fakeApiClient } from '../api/test-support'
 import { ApiClientError } from '../api/http-client'
 import { resetSessionState } from '../composables/useSession'
 
 function mountPage(auth: Partial<ApiClient['auth']>) {
-  const client = { auth } as ApiClient
+  const client = fakeApiClient({ auth: { ...fakeApiClient().auth, ...auth } })
   return mount(LoginPage, {
     global: { provide: { [API_CLIENT_KEY]: client } },
   })

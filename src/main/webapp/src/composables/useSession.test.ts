@@ -2,6 +2,7 @@ import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { API_CLIENT_KEY, type ApiClient } from '../api/client'
+import { fakeApiClient } from '../api/test-support'
 import { ApiClientError } from '../api/http-client'
 import { resetSessionState, useSession } from './useSession'
 
@@ -19,14 +20,7 @@ function mountSession(client: ApiClient) {
 }
 
 function fakeClient(overrides: Partial<ApiClient['auth']> = {}): ApiClient {
-  return {
-    auth: {
-      login: async () => ({ username: 'admin' }),
-      logout: async () => undefined,
-      session: async () => ({ username: 'admin' }),
-      ...overrides,
-    },
-  } as ApiClient
+  return fakeApiClient({ auth: { ...fakeApiClient().auth, ...overrides } })
 }
 
 describe('useSession', () => {

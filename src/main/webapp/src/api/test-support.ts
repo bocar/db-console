@@ -1,0 +1,29 @@
+import type { ApiClient } from './client'
+
+/**
+ * 测试共享的 ApiClient 假实现：全命名空间的默认空操作，
+ * 按用例覆盖所需分区，避免各测试文件手写整份客户端字面量。
+ */
+export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
+  const base: ApiClient = {
+    auth: {
+      login: async () => ({ username: 'admin' }),
+      logout: async () => undefined,
+      session: async () => ({ username: 'admin' }),
+    },
+    dataSources: {
+      list: async () => [],
+      testConnection: async () => ({ ok: true, kind: 'NONE', message: '连接正常' }),
+    },
+    metadata: { tables: async () => [] },
+    sql: {
+      execute: async () => {
+        throw new Error('fakeApiClient: sql.execute 未在用例中覆盖')
+      },
+      cancel: async () => undefined,
+    },
+    transaction: { commit: async () => undefined, rollback: async () => undefined },
+    history: { list: async () => [], clear: async () => undefined },
+  }
+  return { ...base, ...overrides } as ApiClient
+}

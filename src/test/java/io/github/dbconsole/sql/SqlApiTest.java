@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 /**
  * 执行接口规则测试：全部走拒绝或确认签发路径，不触数据库。
@@ -70,10 +71,10 @@ class SqlApiTest {
   }
 
   private MvcResult execute(String sql, String confirmationToken) throws Exception {
-    return execute("mysql-work-note", sql, confirmationToken);
+    return executeRequest("mysql-work-note", sql, confirmationToken).andReturn();
   }
 
-  private org.springframework.test.web.servlet.ResultActions executeRequest(
+  private ResultActions executeRequest(
       String sourceId, String sql, String confirmationToken) throws Exception {
     String body =
         confirmationToken == null
@@ -87,10 +88,6 @@ class SqlApiTest {
             .content(body));
   }
 
-  private MvcResult execute(String sourceId, String sql, String confirmationToken)
-      throws Exception {
-    return executeRequest(sourceId, sql, confirmationToken).andReturn();
-  }
 
   private static String jsonText(String value) {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
@@ -189,14 +186,7 @@ class SqlApiTest {
     MvcResult issued = execute("UPDATE dbconsole_test_t SET name = 'x'", null);
     String token = JsonPath.read(issued.getResponse().getContentAsString(), "$.confirmationToken");
 
-    mockMvc
-        .perform(
-            post("/api/sql/execute")
-                .cookie(session)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"sourceId\":\"prod-source\",\"sql\":\"UPDATE dbconsole_test_t SET name = 'x'\",\"confirmationToken\":\"%s\"}"
-                        .formatted(token)))
+    executeRequest("prod-source", "UPDATE dbconsole_test_t SET name = 'x'", token)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"));
   }
