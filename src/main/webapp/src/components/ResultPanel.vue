@@ -17,6 +17,7 @@ const props = defineProps<{
   sourceName: string
   hasResult: boolean
   updateInfo?: UpdateResult
+  truncated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -115,6 +116,7 @@ const changePage = (event: Event) => {
           <span class="execution-success"><Check :size="13" />执行成功</span>
           <span>{{ elapsed }} ms</span>
           <span>当前加载 {{ rows.length }} 行</span>
+          <span v-if="truncated" class="summary-truncated">结果超过单次上限，已截断</span>
           <span class="summary-source">仅导出已加载数据</span>
         </template>
         <span v-else>尚未执行查询，结果将在执行后显示。</span>

@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import { useApiClient } from '../api/client'
 import type { TableDefinition } from '../types'
-import { useToast } from './useToast'
 
 const tables = ref<TableDefinition[]>([])
 const loading = ref(false)
@@ -11,7 +10,6 @@ let loadGeneration = 0
 /** 对象树（F-03）：表结构与当前选中表；迟到的旧响应被丢弃。 */
 export function useObjectTree() {
   const api = useApiClient()
-  const toast = useToast()
 
   const selectedTable = computed<TableDefinition | null>(
     () => tables.value.find((table) => table.name === selectedTableName.value) ?? null,
@@ -27,10 +25,10 @@ export function useObjectTree() {
       if (!tables.value.some((table) => table.name === selectedTableName.value)) {
         selectedTableName.value = tables.value[0]?.name ?? ''
       }
-    } catch (error) {
+    } catch {
       if (generation !== loadGeneration) return
       tables.value = []
-      toast.notify(error instanceof Error ? `对象结构加载失败：${error.message}` : '对象结构加载失败。')
+      // 静默置空：错误面板态展示随 T06 端点落地，不弹 toast 干扰执行反馈
     } finally {
       if (generation === loadGeneration) {
         loading.value = false

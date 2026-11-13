@@ -52,3 +52,17 @@ export function displayQueryValue(value: QueryValue): string {
   if (value === '') return '空字符串'
   return String(value)
 }
+
+/** 确认要求的原因说明（F-09）。 */
+export type ConfirmationReason = 'PRODUCTION_WRITE' | 'MISSING_WHERE' | 'IMPLICIT_COMMIT_DDL'
+
+export function confirmationReasonText(reason: ConfirmationReason): string {
+  switch (reason) {
+    case 'PRODUCTION_WRITE':
+      return '目标环境为生产环境，所有数据变更都必须逐条确认。'
+    case 'MISSING_WHERE':
+      return '此更新或删除没有最外层 WHERE 条件，可能影响全表数据。'
+    case 'IMPLICIT_COMMIT_DDL':
+      return '此 DDL 会触发隐式提交，成功后无法随事务回滚。'
+  }
+}

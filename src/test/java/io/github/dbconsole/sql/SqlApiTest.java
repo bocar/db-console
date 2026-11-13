@@ -1,5 +1,6 @@
 package io.github.dbconsole.sql;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,6 +40,14 @@ import org.springframework.test.web.servlet.MvcResult;
       "db-console.data-sources[0].jdbc-url=jdbc:mysql://127.0.0.1:1/never",
       "db-console.data-sources[0].username=root",
       "db-console.data-sources[0].credential-ref=DB_CONSOLE_TEST_RULE",
+      "db-console.data-sources[1].id=prod-source",
+      "db-console.data-sources[1].display-name=生产库",
+      "db-console.data-sources[1].environment=PRODUCTION",
+      "db-console.data-sources[1].database-type=MYSQL",
+      "db-console.data-sources[1].compatibility-mode=NATIVE",
+      "db-console.data-sources[1].jdbc-url=jdbc:mysql://127.0.0.1:1/never",
+      "db-console.data-sources[1].username=root",
+      "db-console.data-sources[1].credential-ref=DB_CONSOLE_TEST_RULE",
     })
 class SqlApiTest {
 
@@ -61,11 +70,16 @@ class SqlApiTest {
   }
 
   private MvcResult execute(String sql, String confirmationToken) throws Exception {
+    return execute("mysql-work-note", sql, confirmationToken);
+  }
+
+  private MvcResult execute(String sourceId, String sql, String confirmationToken)
+      throws Exception {
     String body =
         confirmationToken == null
-            ? "{\"sourceId\":\"mysql-work-note\",\"sql\":%s}".formatted(jsonText(sql))
-            : "{\"sourceId\":\"mysql-work-note\",\"sql\":%s,\"confirmationToken\":\"%s\"}"
-                .formatted(jsonText(sql), confirmationToken);
+            ? "{\"sourceId\":\"%s\",\"sql\":%s}".formatted(sourceId, jsonText(sql))
+            : "{\"sourceId\":\"%s\",\"sql\":%s,\"confirmationToken\":\"%s\"}"
+                .formatted(sourceId, jsonText(sql), confirmationToken);
     return mockMvc
         .perform(
             post("/api/sql/execute")
@@ -147,6 +161,46 @@ class SqlApiTest {
             .content(
                 "{\"sourceId\":\"mysql-work-note\",\"sql\":\"UPDATE dbconsole_test_t SET name = 'y'\",\"confirmationToken\":\"%s\"}"
                     .formatted(staleToken)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"));
+  }
+
+  @Test
+  @DisplayName("生产环境数据增删改一律需确认（含 CTE 写入），原因标注 PRODUCTION_WRITE")
+  void productionWritesAlwaysRequireConfirmation() throws Exception {
+    MvcResult insert = execute("prod-source", "INSERT INTO t VALUES (1)", null);
+    mockMvc
+        .perform(
+            post("/api/sql/execute")
+                .cookie(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"sourceId\":\"prod-source\",\"sql\":\"INSERT INTO t VALUES (1)\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"))
+        .andExpect(jsonPath("$.reason").value("PRODUCTION_WRITE"));
+
+    MvcResult cteWrite =
+        execute("prod-source", "WITH c AS (SELECT 1) DELETE FROM t WHERE x IN (SELECT 1)", null);
+    String cteBody = cteWrite.getResponse().getContentAsString();
+    assertThat(cteBody).contains("\"kind\":\"CONFIRMATION_REQUIRED\"");
+    assertThat(cteBody).contains("\"reason\":\"PRODUCTION_WRITE\"");
+  }
+
+  @Test
+  @DisplayName("确认令牌换数据源即失效（F-09 数据源绑定）")
+  void confirmationTokenRejectedAcrossDataSources() throws Exception {
+    MvcResult issued = execute("UPDATE dbconsole_test_t SET name = 'x'", null);
+    String token = JsonPath.read(issued.getResponse().getContentAsString(), "$.confirmationToken");
+
+    mockMvc
+        .perform(
+            post("/api/sql/execute")
+                .cookie(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"sourceId\":\"prod-source\",\"sql\":\"UPDATE dbconsole_test_t SET name = 'x'\",\"confirmationToken\":\"%s\"}"
+                        .formatted(token)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.kind").value("CONFIRMATION_REQUIRED"));
   }

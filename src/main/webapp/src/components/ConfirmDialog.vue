@@ -8,6 +8,7 @@ const props = defineProps<{
   sourceName: string
   environment: string
   implicitCommit: boolean
+  reasonText?: string
 }>()
 
 const emit = defineEmits<{ confirm: []; cancel: [] }>()
@@ -31,7 +32,9 @@ defineExpose({ open })
         <button type="submit" class="icon-button" value="cancel" aria-label="关闭确认对话框"><X :size="18" /></button>
       </div>
       <h2 id="confirm-title">{{ props.title }}</h2>
-      <p id="confirm-description" class="dialog-description">请核对目标环境和完整语句。确认只对当前会话、数据源和这份 SQL 有效。</p>
+      <p id="confirm-description" class="dialog-description">
+        {{ props.reasonText ?? '请核对目标环境和完整语句。确认只对当前会话、数据源和这份 SQL 有效。' }}
+      </p>
       <div class="target-box">
         <Database :size="16" />
         <span>{{ sourceName }}</span>

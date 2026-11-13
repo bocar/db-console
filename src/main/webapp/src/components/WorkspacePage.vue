@@ -7,7 +7,7 @@ import HistoryDialog from './HistoryDialog.vue'
 import ObjectExplorer from './ObjectExplorer.vue'
 import ResultPanel from './ResultPanel.vue'
 import SqlEditor from './SqlEditor.vue'
-import { displayDatabaseType, displayEnvironment } from '../display'
+import { confirmationReasonText, displayDatabaseType, displayEnvironment, environmentBadgeClass } from '../display'
 import { quoteIdentifier, selectTopStatement } from '../dialect'
 import { useDataSources } from '../composables/useDataSources'
 import { useExecution } from '../composables/useExecution'
@@ -36,7 +36,7 @@ const { sources, selectedSourceId, selectedSource, testing } = dataSources
 const objectTree = useObjectTree()
 const { tables, selectedTableName, selectedTable, loading: refreshing } = objectTree
 const results = useResults()
-const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elapsedMs, hasResult, updateResult } = results
+const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elapsedMs, hasResult, updateResult, queryResult } = results
 const transaction = useManualTransaction()
 const historyStore = useSqlHistory()
 const { load: loadHistory, clear: clearHistoryFor } = historyStore
@@ -244,6 +244,7 @@ onUnmounted(() => {
             <span class="transaction-mode">手动事务</span>
             <span class="transaction-state"><span class="transaction-dot"></span>{{ transactionPending ? '有变更未提交' : '无未提交变更' }}</span>
             <span class="transaction-context">当前会话 · {{ selectedSource?.displayName ?? '' }}</span>
+            <span v-if="selectedSource" class="badge" :class="environmentBadgeClass(selectedSource.environment)">{{ displayEnvironment(selectedSource.environment) }}环境</span>
             <div class="transaction-actions">
               <button type="button" class="button" :disabled="!transactionPending" @click="rollbackTransaction"><RotateCcw :size="13" />回滚</button>
               <button type="button" class="button commit-button" :disabled="!transactionPending" @click="commitTransaction"><Check :size="13" />提交 Commit</button>
@@ -279,6 +280,7 @@ onUnmounted(() => {
           :source-name="selectedSource?.displayName ?? ''"
           :has-result="hasResult"
           :update-info="updateResult ?? undefined"
+          :truncated="queryResult?.truncated ?? false"
           @tab-change="activeTab = $event"
           @page-change="page = $event"
           @page-size-change="results.changePageSize($event)"
@@ -300,6 +302,7 @@ onUnmounted(() => {
       :source-name="selectedSource?.displayName ?? ''"
       :environment="confirmEnvironment"
       :implicit-commit="confirmImplicitCommit"
+      :reason-text="pendingConfirmation ? confirmationReasonText(pendingConfirmation.reason) : undefined"
       @confirm="confirmExecution"
       @cancel="cancelExecution"
     />
