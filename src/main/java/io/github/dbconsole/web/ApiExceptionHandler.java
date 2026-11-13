@@ -36,7 +36,9 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(DatabaseExecutionException.class)
   public ResponseEntity<ApiError> handleDatabaseExecution(DatabaseExecutionException ex) {
-    log.warn("数据库执行失败：{}", ex.getMessage());
+    // 详情（含 sqlState 与原因链）已由服务层记录，这里不重复落盘消息，避免 SQL 片段进日志
+    log.warn("数据库执行失败：code=DATABASE_ERROR cause={}",
+        ex.getCause() == null ? "unknown" : ex.getCause().getClass().getSimpleName());
     return ResponseEntity.badRequest().body(new ApiError("DATABASE_ERROR", ex.getMessage()));
   }
 }

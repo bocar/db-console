@@ -5,7 +5,6 @@ import java.math.BigInteger;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -86,9 +85,5 @@ final class QueryResultMapper {
       return value;
     }
     return value.toString();
-  }
-
-  static boolean isTextColumn(int sqlType) {
-    return sqlType == Types.CHAR || sqlType == Types.VARCHAR || sqlType == Types.LONGVARCHAR;
   }
 }

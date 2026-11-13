@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import * as monaco from 'monaco-editor'
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import { resolveExecutionText } from '../execution-text'
 
 const props = defineProps<{ modelValue: string }>()
 const emit = defineEmits<{
@@ -20,8 +21,9 @@ const executionText = () => {
   if (!editor) return props.modelValue
   const selection = editor.getSelection()
   const model = editor.getModel()
-  if (selection && model && !selection.isEmpty()) return model.getValueInRange(selection)
-  return editor.getValue()
+  const selectedText =
+    selection && model && !selection.isEmpty() ? model.getValueInRange(selection) : null
+  return resolveExecutionText(editor.getValue(), selectedText)
 }
 
 onMounted(() => {

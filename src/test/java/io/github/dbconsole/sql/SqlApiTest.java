@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.dbconsole.jdbc.CredentialSource;
+import com.jayway.jsonpath.JsonPath;
 import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
 import java.util.Map;
@@ -126,8 +127,6 @@ class SqlApiTest {
   @Test
   @DisplayName("开发环境无 WHERE 更新返回确认要求（未触库）")
   void returnsConfirmationForMissingWhereWithoutTouchingDatabase() throws Exception {
-    MvcResult result = execute("UPDATE dbconsole_test_t SET name = 'x'", null);
-
     mockMvc
         .perform(post("/api/sql/execute").cookie(session).contentType(MediaType.APPLICATION_JSON)
             .content("{\"sourceId\":\"mysql-work-note\",\"sql\":\"UPDATE dbconsole_test_t SET name = 'x'\"}"))
@@ -141,9 +140,7 @@ class SqlApiTest {
   @DisplayName("携带失效令牌（SQL 已变化）重新签发确认要求而非执行")
   void invalidTokenReissuesConfirmation() throws Exception {
     MvcResult first = execute("UPDATE dbconsole_test_t SET name = 'x'", null);
-    String staleToken =
-        com.jayway.jsonpath.JsonPath.read(
-            first.getResponse().getContentAsString(), "$.confirmationToken");
+    String staleToken = JsonPath.read(first.getResponse().getContentAsString(), "$.confirmationToken");
 
     mockMvc
         .perform(post("/api/sql/execute").cookie(session).contentType(MediaType.APPLICATION_JSON)

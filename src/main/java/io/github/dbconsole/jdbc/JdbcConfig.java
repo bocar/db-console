@@ -20,7 +20,13 @@ public class JdbcConfig {
   }
 
   @Bean
-  public ConnectionTester connectionTester(DataSourceRegistry registry) {
-    return new ConnectionTester(registry);
+  public ConnectionFactory connectionFactory(DbConsoleProperties properties) {
+    return new ConnectionFactory(properties);
+  }
+
+  @Bean
+  public ConnectionTester connectionTester(
+      DataSourceRegistry registry, ConnectionFactory connections) {
+    return new ConnectionTester(registry, connections);
   }
 }
