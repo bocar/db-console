@@ -49,7 +49,15 @@ public record DbConsoleProperties(
 
   public record TransactionProperties(@NotNull Duration idleTimeout) {}
 
-  public record AuditProperties(@NotBlank String directory, @NotNull Duration retention) {}
+  /** 零或负保留期会在写入当天即删当日审计文件，构造期直接拒绝。 */
+  public record AuditProperties(@NotBlank String directory, @NotNull Duration retention) {
+
+    public AuditProperties {
+      if (retention == null || retention.compareTo(Duration.ZERO) <= 0) {
+        throw new IllegalArgumentException("audit retention must be positive");
+      }
+    }
+  }
 
   public record DataSourceProperties(
       @NotBlank String id,

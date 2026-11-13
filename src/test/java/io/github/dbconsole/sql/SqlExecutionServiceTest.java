@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -149,6 +150,23 @@ class SqlExecutionServiceTest {
   }
 
   @Test
+  @DisplayName("数据库执行失败时驱动错误消息回显的 SQL 与凭据不落应用日志")
+  void databaseFailureKeepsPlainTextSqlAndCredentialsOutOfLogs(CapturedOutput output)
+      throws Exception {
+    String marker = "log-sanitize-marker-42";
+    String sql = "SELECT * FROM dbconsole_test_t WHERE token = '" + marker + "'";
+    when(jdbcStatement.execute(anyString()))
+        .thenThrow(new SQLException(
+            "You have an error in your SQL syntax near '" + sql + "'", "42000"));
+
+    assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
+        .isInstanceOf(DatabaseExecutionException.class);
+
+    verify(audit).recordExecution(eq(USERNAME), eq(SOURCE_ID), eq(sql), anyLong(), eq("FAILED"));
+    assertThat(output).doesNotContain(marker).doesNotContain("db-secret");
+  }
+
+  @Test
   @DisplayName("应用日志不记录完整 SQL、数据库凭据或结果数据")
   void applicationLogsExcludeSensitiveData(CapturedOutput output) throws Exception {
     String sql = "SELECT name FROM dbconsole_test_t WHERE name = 'sql-secret'";
@@ -185,6 +203,19 @@ class SqlExecutionServiceTest {
     verify(audit)
         .recordExecution(eq(USERNAME), eq(SOURCE_ID), eq(sql), anyLong(), eq("SUCCEEDED"));
     verifyNoMoreInteractions(audit);
+  }
+
+  @Test
+  @DisplayName("写入执行只记录一次历史（F-12）")
+  void updateExecutionRecordsHistoryOnce() throws Exception {
+    String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
+    when(jdbcStatement.execute(sql)).thenReturn(false);
+    when(jdbcStatement.getUpdateCount()).thenReturn(1);
+
+    executionService.execute(SESSION_TOKEN, USERNAME, request(sql));
+
+    verify(history, times(1))
+        .record(eq(SESSION_TOKEN), eq(SOURCE_ID), eq(sql), anyLong(), eq(true), eq(false));
   }
 
   @Test

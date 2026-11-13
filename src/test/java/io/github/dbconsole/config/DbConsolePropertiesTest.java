@@ -121,6 +121,17 @@ class DbConsolePropertiesTest {
     }
   }
 
+  @Test
+  @DisplayName("非正的审计保留期被拒绝（零保留期会当日删档）")
+  void rejectsNonPositiveAuditRetention() {
+    assertThatThrownBy(() -> new DbConsoleProperties.AuditProperties("./audit", Duration.ZERO))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("retention");
+    assertThatThrownBy(() -> new DbConsoleProperties.AuditProperties("./audit", Duration.ofDays(-1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("retention");
+  }
+
   private static Map<String, String> validSource() {
     Map<String, String> source = new HashMap<>();
     source.put("db-console.login.username", "admin");

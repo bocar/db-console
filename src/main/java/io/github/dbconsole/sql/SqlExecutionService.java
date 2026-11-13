@@ -310,7 +310,6 @@ public class SqlExecutionService {
           // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
           Integer affectedRows =
               statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
-          history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
           result = new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
               statement.kind().isImplicitCommitDdl());
         }
