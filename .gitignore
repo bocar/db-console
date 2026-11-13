@@ -10,7 +10,20 @@ src/main/webapp/node/
 
 # local runtime config with real credentials (passwords live in env vars)
 config/local/
-.claude/settings.local.json
 
 # local playwright artifacts
 .playwright-mcp/
+
+# AI tooling & agent environments (personal, not part of the product)
+.agents/
+.claude/
+.codex/
+.cursor/
+.kiro/
+.zcode/
+.mcp.json
+opencode.jsonc
+skills-lock.json
+AGENTS.md
+CLAUDE.md
+docs/agents/
