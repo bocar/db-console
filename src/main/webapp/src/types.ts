@@ -79,6 +79,8 @@ export interface UpdateResult {
   affectedRows: number | null
   elapsedMs: number
   uncommitted: boolean
+  /** DDL 语句标识（触发对象树刷新与「独立连接执行」文案）。 */
+  implicitCommitDdl: boolean
 }
 
 export type ExecutionOutcome = QueryResult | UpdateResult

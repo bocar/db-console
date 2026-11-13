@@ -20,12 +20,14 @@ public sealed interface SqlResponses {
     }
   }
 
-  /** 变更结果：受影响行数；驱动不提供（如 DDL）时为 null。 */
-  record UpdateResult(String kind, Integer affectedRows, long elapsedMs, boolean uncommitted)
-      implements SqlResponses {
+  /** 变更结果：受影响行数（null=驱动未提供）；implicitCommitDdl 标识 DDL 语句。 */
+  record UpdateResult(
+      String kind, Integer affectedRows, long elapsedMs, boolean uncommitted,
+      boolean implicitCommitDdl) implements SqlResponses {
 
-    public UpdateResult(Integer affectedRows, long elapsedMs, boolean uncommitted) {
-      this("UPDATE", affectedRows, elapsedMs, uncommitted);
+    public UpdateResult(Integer affectedRows, long elapsedMs, boolean uncommitted,
+        boolean implicitCommitDdl) {
+      this("UPDATE", affectedRows, elapsedMs, uncommitted, implicitCommitDdl);
     }
   }
 

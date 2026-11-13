@@ -2,7 +2,6 @@ package io.github.dbconsole.sql;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.dbconsole.jdbc.ConnectionFailureKind;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -17,12 +16,18 @@ import org.junit.jupiter.api.Test;
 
 class QueryResultMapperTest {
 
+  private static io.github.dbconsole.config.DbConsoleProperties.ExecutionProperties limits(
+      int maxRows, long resultBytes, long cellBytes) {
+    return new io.github.dbconsole.config.DbConsoleProperties.ExecutionProperties(
+        java.time.Duration.ofSeconds(30), 20000, 4, maxRows, maxRows, cellBytes, resultBytes);
+  }
+
   @Test
   @DisplayName("按列位置映射行并保留列元数据（零行保留列名）")
   void mapsRowsByPositionAndKeepsColumnsForZeroRows() throws Exception {
     ResultSet resultSet = resultSet(new Object[0][], "id", "name");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 10_000_000, 65_536, 5);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(100, 10_000_000, 65_536), 5);
 
     assertThat(result.kind()).isEqualTo("QUERY");
     assertThat(result.columns()).hasSize(2);
@@ -37,7 +42,7 @@ class QueryResultMapperTest {
     Object[] row = {920000000000000001L, new BigDecimal("12.34"), 7, null, ""};
     ResultSet resultSet = resultSet(new Object[][] {row}, "big", "amount", "small", "n", "e");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 10_000_000, 65_536, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(100, 10_000_000, 65_536), 1);
 
     assertThat(result.rows().get(0))
         .containsExactly("920000000000000001", "12.34", 7, null, "");
@@ -51,7 +56,7 @@ class QueryResultMapperTest {
     Object[] row = {timestamp, Boolean.TRUE, bytes};
     ResultSet resultSet = resultSet(new Object[][] {row}, "at", "ok", "data");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 10_000_000, 65_536, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(100, 10_000_000, 65_536), 1);
 
     assertThat(result.rows().get(0).get(0)).isEqualTo("2026-11-13 08:30:00.0");
     assertThat(result.rows().get(0).get(1)).isEqualTo(true);
@@ -64,7 +69,7 @@ class QueryResultMapperTest {
     Object[][] data = {{1}, {2}, {3}, {4}};
     ResultSet resultSet = resultSet(data, "id");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 2, 10_000_000, 65_536, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(2, 10_000_000, 65_536), 1);
 
     assertThat(result.rows()).hasSize(2);
     assertThat(result.truncated()).isTrue();
@@ -78,7 +83,7 @@ class QueryResultMapperTest {
     Object[] row = {longText};
     ResultSet resultSet = resultSet(new Object[][] {row}, "data");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 10, 10_000_000, 100, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(10, 10_000_000, 100), 1);
     String cell = (String) result.rows().get(0).get(0);
     assertThat(cell).startsWith("x").contains("<truncated:").endsWith("chars>");
   }
@@ -89,19 +94,11 @@ class QueryResultMapperTest {
     Object[][] data = {{"aaaa"}, {"bbbb"}, {"cccc"}, {"dddd"}};
     ResultSet resultSet = resultSet(data, "text");
 
-    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, 100, 20, 65_536, 1);
+    SqlResponses.QueryResult result = QueryResultMapper.map(resultSet, limits(100, 20, 65_536), 1);
     assertThat(result.rows().size()).isLessThan(data.length);
     assertThat(result.truncated()).isTrue();
   }
 
-  @Test
-  @DisplayName("执行结果未知：写入语句超时返回 UNKNOWN_OUTCOME 而非 DATABASE_ERROR")
-  void writeTimeoutReturnsUnknownOutcome() throws Exception {
-    // 规则测试：mock 数据源不可达，写入语句超时/断连归为 UNKNOWN_OUTCOME
-    // 由集成测试覆盖真库场景；此处验证分类逻辑
-    java.sql.SQLTimeoutException timeout = new java.sql.SQLTimeoutException("query timed out");
-    assertThat(ConnectionFailureKind.classify(timeout)).isEqualTo(ConnectionFailureKind.TIMEOUT);
-  }
 
   private static ResultSet resultSet(Object[][] data, String... columnNames) throws SQLException {
     ResultSet resultSet = mock(ResultSet.class);

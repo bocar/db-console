@@ -12,6 +12,11 @@ public enum ConnectionFailureKind {
   UNAVAILABLE,
   UNKNOWN;
 
+  /** 写入或提交超时/断连且状态无法确认（F-10「执行结果未知」）。 */
+  public boolean isOutcomeUnknown() {
+    return this == TIMEOUT || this == UNAVAILABLE;
+  }
+
   /** 按驱动异常特征分类；只依赖 SQLState 与消息文本，不回传原始细节。 */
   public static ConnectionFailureKind classify(SQLException exception) {
     if (exception instanceof SQLTimeoutException) {

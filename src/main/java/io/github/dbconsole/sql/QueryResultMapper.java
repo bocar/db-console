@@ -20,8 +20,9 @@ final class QueryResultMapper {
   private QueryResultMapper() {}
 
   static SqlResponses.QueryResult map(
-      ResultSet resultSet, int maxRows, long resultBytesLimit, long cellBytesLimit, long elapsedMs)
-      throws SQLException {
+      ResultSet resultSet,
+      io.github.dbconsole.config.DbConsoleProperties.ExecutionProperties limits,
+      long elapsedMs) throws SQLException {
     ResultSetMetaData metadata = resultSet.getMetaData();
     int columnCount = metadata.getColumnCount();
     List<SqlResponses.QueryColumn> columns = new ArrayList<>(columnCount);
@@ -34,19 +35,22 @@ final class QueryResultMapper {
     boolean truncated = false;
     long totalBytes = 0;
     while (resultSet.next()) {
-      if (rows.size() >= maxRows) {
+      if (rows.size() >= limits.maxPageSize()) {
         truncated = true;
         break;
       }
       List<Object> row = new ArrayList<>(columnCount);
       long rowBytes = 0;
       for (int index = 1; index <= columnCount; index++) {
-        Object value = mapValue(resultSet.getObject(index), cellBytesLimit);
+        Object value = mapValue(resultSet.getObject(index));
+        if (value instanceof String text) {
+          value = truncateCell(text, limits.maxCellBytes());
+        }
         row.add(value);
-        rowBytes += value == null ? 4 : String.valueOf(value).length() * 2L;
+        rowBytes += estimateBytes(value);
       }
       totalBytes += rowBytes;
-      if (totalBytes > resultBytesLimit) {
+      if (totalBytes > limits.maxResultBytes()) {
         truncated = true;
         break;
       }
@@ -60,7 +64,7 @@ final class QueryResultMapper {
    * 时间转文本，二进制转 Base64，NULL 与空字符串保持区分。
    * 读取失败按 SQLException 上抛，由执行层统一映射。
    */
-  static Object mapValue(Object value, long cellBytesLimit) throws SQLException {
+  static Object mapValue(Object value) throws SQLException {
     if (value == null) {
       return null;
     }
@@ -88,14 +92,18 @@ final class QueryResultMapper {
     if (value instanceof SerialBlob blob) {
       return Base64.getEncoder().encodeToString(blob.getBytes(1, (int) blob.length()));
     }
-    if (value instanceof String text) {
-      return truncateCell(text, cellBytesLimit);
-    }
-    if (value instanceof Integer || value instanceof Short
+    if (value instanceof String || value instanceof Integer || value instanceof Short
         || value instanceof Byte || value instanceof Boolean) {
       return value;
     }
-    return truncateCell(value.toString(), cellBytesLimit);
+    return value.toString();
+  }
+
+  /** UTF-16 粗估：null≈4B，数值/布尔≈8B，字符串×2B。 */
+  private static long estimateBytes(Object value) {
+    if (value == null) return 4;
+    if (value instanceof String text) return text.length() * 2L;
+    return 8;
   }
 
   private static String truncateCell(String text, long cellBytesLimit) {

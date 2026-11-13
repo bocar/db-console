@@ -56,12 +56,12 @@ describe('ResultPanel', () => {
   })
 
   it('shows affected rows for update results and marks missing counts', async () => {
-    const update: UpdateResult = { kind: 'UPDATE', affectedRows: 3, elapsedMs: 12, uncommitted: false }
+    const update: UpdateResult = { kind: 'UPDATE', affectedRows: 3, elapsedMs: 12, uncommitted: false, implicitCommitDdl: false }
     const withCount = mountPanel({ activeTab: 'info', updateInfo: update })
     expect(withCount.text()).toContain('受影响行数')
     expect(withCount.text()).toContain('3')
 
-    const withoutCount: UpdateResult = { kind: 'UPDATE', affectedRows: null, elapsedMs: 9, uncommitted: false }
+    const withoutCount: UpdateResult = { kind: 'UPDATE', affectedRows: null, elapsedMs: 9, uncommitted: false, implicitCommitDdl: true }
     const ddl = mountPanel({ activeTab: 'info', updateInfo: withoutCount })
     expect(ddl.text()).toContain('驱动未提供行数')
   })

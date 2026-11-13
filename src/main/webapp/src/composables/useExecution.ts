@@ -76,7 +76,7 @@ export function useExecution(deps: ExecutionDeps) {
         deps.results.showUpdate(outcome)
         deps.transaction.markPending()
         toast.notify('执行成功，变更尚未提交。')
-      } else if (outcome.affectedRows === null) {
+      } else if (outcome.implicitCommitDdl) {
         deps.results.showUpdate(outcome)
         toast.notify('语句已在独立连接执行并生效。')
         deps.onSchemaChanged?.()

@@ -74,7 +74,7 @@ describe('useExecution 确认流', () => {
         implicitCommitDdl: false,
         confirmationToken: 'token-1',
       } as ConfirmationRequired)
-      .mockResolvedValueOnce({ kind: 'UPDATE', affectedRows: 3, elapsedMs: 5, uncommitted: false })
+      .mockResolvedValueOnce({ kind: 'UPDATE', affectedRows: 3, elapsedMs: 5, uncommitted: false, implicitCommitDdl: false })
     const handle = await mountExecutionReady(fakeClient(execute))
 
     await handle.execute('UPDATE t SET x = 1')

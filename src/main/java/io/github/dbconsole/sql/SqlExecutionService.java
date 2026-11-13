@@ -153,28 +153,21 @@ public class SqlExecutionService {
             elapsedMs);
         if (isResultSet) {
           try (ResultSet resultSet = jdbcStatement.getResultSet()) {
-            return QueryResultMapper.map(
-                resultSet,
-                properties.execution().maxPageSize(),
-                properties.execution().maxResultBytes(),
-                properties.execution().maxCellBytes(),
-                elapsedMs);
+            return QueryResultMapper.map(resultSet, properties.execution(), elapsedMs);
           }
         }
         int rawCount = jdbcStatement.getUpdateCount();
         // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
         Integer affectedRows =
             statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
-        return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction);
+        return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
+            statement.kind().isImplicitCommitDdl());
       }
     } catch (SQLException exception) {
       long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
       boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
       ConnectionFailureKind failureKind = ConnectionFailureKind.classify(exception);
-      boolean timeoutOrDisconnect =
-          failureKind == ConnectionFailureKind.TIMEOUT
-              || failureKind == ConnectionFailureKind.UNAVAILABLE;
-      if (writeStatement && timeoutOrDisconnect) {
+      if (writeStatement && failureKind.isOutcomeUnknown()) {
         log.warn(
             "执行结果未知 sourceId={} kind={} sqlState={} elapsedMs={}",
             source.id(), statement.kind(), exception.getSQLState(), elapsedMs);

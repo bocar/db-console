@@ -264,11 +264,11 @@ export class MockApiClient implements ApiClient {
       ...this.historyEntries,
     ]
     if (isDdl) {
-      return { kind: 'UPDATE', affectedRows: null, elapsedMs, uncommitted: false }
+      return { kind: 'UPDATE', affectedRows: null, elapsedMs, uncommitted: false, implicitCommitDdl: true }
     }
     if (isWrite) {
       this.transactionPendingBySource.set(sourceId, true)
-      return { kind: 'UPDATE', affectedRows: 1, elapsedMs, uncommitted: true }
+      return { kind: 'UPDATE', affectedRows: 1, elapsedMs, uncommitted: true, implicitCommitDdl: false }
     }
     return { kind: 'QUERY', columns: this.queryColumns, rows: this.queryRows, elapsedMs, truncated: false }
   }
