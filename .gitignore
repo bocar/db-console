@@ -1,20 +1,27 @@
+# --- 构建产物与依赖（任意深度） ---
 node_modules/
 dist/
 target/
 .vite/
 src/main/webapp/node/
 *.log
-.DS_Store
+
+# --- IDE 与操作系统 ---
 .idea/
 .vscode/
+.DS_Store
 
-# local runtime config with real credentials (passwords live in env vars)
+# --- 运行时产物（仅仓库根） ---
+# 审计输出目录；源码包 io.github.dbconsole.audit 不受影响（锚定根路径）
+/audit/
+
+# --- 本地运行配置（真实凭据目录，密码一律走环境变量） ---
 config/local/
 
-# local playwright artifacts
+# --- 本地 Playwright 工件 ---
 .playwright-mcp/
 
-# AI tooling & agent environments (personal, not part of the product)
+# --- AI 工具与代理环境（个人环境，不入产品库；见 404b955） ---
 .agents/
 .claude/
 .codex/
@@ -27,4 +34,3 @@ skills-lock.json
 AGENTS.md
 CLAUDE.md
 docs/agents/
-audit/
