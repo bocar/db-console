@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,19 +77,7 @@ class DataSourceRegistryMySqlIntegrationTest {
 
   @BeforeEach
   void login() throws Exception {
-    MvcResult result =
-        mockMvc
-            .perform(
-                post("/api/auth/login")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"username\":\"admin\",\"password\":\"test-secret\"}"))
-            .andExpect(status().isOk())
-            .andReturn();
-    for (Cookie cookie : result.getResponse().getCookies()) {
-      if ("DB_CONSOLE_SESSION".equals(cookie.getName())) {
-        session = cookie;
-      }
-    }
+    session = AuthTestSupport.loginSession(mockMvc);
   }
 
   @Test

@@ -17,7 +17,6 @@ public final class ConnectionTester {
 
   public ConnectionTester(DataSourceRegistry registry) {
     this.registry = registry;
-    DriverManager.setLoginTimeout(TIMEOUT_MILLIS / 1000);
   }
 
   public ConnectionTestOutcome test(String sourceId) {
@@ -25,18 +24,19 @@ public final class ConnectionTester {
     Properties props = new Properties();
     props.setProperty("user", source.username());
     props.setProperty("password", source.password());
+    // MySQL 驱动识别的毫秒级超时；DM8 侧超时属性随方言层（T04）统一处理
     props.setProperty("connectTimeout", String.valueOf(TIMEOUT_MILLIS));
     props.setProperty("socketTimeout", String.valueOf(TIMEOUT_MILLIS));
     try (Connection ignored = DriverManager.getConnection(source.jdbcUrl(), props)) {
       return ConnectionTestOutcome.success();
     } catch (SQLException exception) {
       ConnectionFailureKind kind = ConnectionFailureKind.classify(exception);
+      // 日志只记分类与 SQLState：驱动原始消息可能内嵌账号或主机，不得落盘
       log.warn(
-          "连接测试失败 sourceId={} kind={} sqlState={} reason={}",
+          "连接测试失败 sourceId={} kind={} sqlState={}",
           source.id(),
           kind,
-          exception.getSQLState(),
-          exception.getMessage());
+          exception.getSQLState());
       return ConnectionTestOutcome.failure(kind);
     }
   }

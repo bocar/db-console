@@ -14,7 +14,6 @@ public record ConnectionTestOutcome(boolean ok, ConnectionFailureKind kind, Stri
           case TIMEOUT -> "连接超时：目标数据库未在时限内响应";
           case UNAVAILABLE -> "无法连接到数据库服务器";
           case UNKNOWN, NONE -> "连接失败，原因未知";
-          default -> throw new IllegalArgumentException("Unexpected value: " + kind);
         };
     return new ConnectionTestOutcome(false, kind, message);
   }

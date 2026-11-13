@@ -1,6 +1,7 @@
 package io.github.dbconsole.jdbc;
 
 import io.github.dbconsole.config.DbConsoleProperties;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +20,7 @@ public final class DataSourceRegistry {
     for (DbConsoleProperties.DataSourceProperties source : properties.dataSources()) {
       resolved.put(source.id(), resolve(source, credentials));
     }
-    this.dataSourcesById = java.util.Collections.unmodifiableMap(resolved);
+    this.dataSourcesById = Collections.unmodifiableMap(resolved);
   }
 
   /** 浏览器可见的公开信息列表，保持配置顺序。 */

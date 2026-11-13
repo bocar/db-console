@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -51,7 +53,7 @@ class DataSourceApiTest {
   @TestConfiguration
   static class FakeCredentials {
     @Bean
-    @org.springframework.context.annotation.Primary
+    @Primary
     CredentialSource testCredentialSource() {
       return ref -> Map.of(
           "DB_CONSOLE_TEST_MYSQL", "irrelevant",
@@ -61,19 +63,7 @@ class DataSourceApiTest {
 
   @BeforeEach
   void login() throws Exception {
-    MvcResult result =
-        mockMvc
-            .perform(
-                post("/api/auth/login")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"username\":\"admin\",\"password\":\"test-secret\"}"))
-            .andExpect(status().isOk())
-            .andReturn();
-    for (Cookie cookie : result.getResponse().getCookies()) {
-      if ("DB_CONSOLE_SESSION".equals(cookie.getName())) {
-        session = cookie;
-      }
-    }
+    session = AuthTestSupport.loginSession(mockMvc);
   }
 
   @Test
