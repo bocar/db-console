@@ -28,48 +28,33 @@ public class TransactionController {
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
     transactions.begin(sessionToken, registry.resolve(sourceId));
-    return status(sessionToken);
+    return currentStatus(sessionToken);
   }
 
   @PostMapping("/{sourceId}/commit")
   public TransactionStatus commit(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
-    requireActiveOnSource(sessionToken, sourceId);
-    transactions.commit(sessionToken);
-    return new TransactionStatus(false, null);
+    transactions.commit(sessionToken, sourceId);
+    return currentStatus(sessionToken);
   }
 
   @PostMapping("/{sourceId}/rollback")
   public TransactionStatus rollback(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
-    requireActiveOnSource(sessionToken, sourceId);
-    transactions.rollback(sessionToken);
-    return new TransactionStatus(false, null);
-  }
-
-  /** 事务操作的数据源须与活动事务一致：防止用别源路径操作本源事务。 */
-  private void requireActiveOnSource(String sessionToken, String sourceId) {
-    transactions
-        .activeSource(sessionToken)
-        .filter(active -> active.equals(sourceId))
-        .ifPresentOrElse(
-            active -> {},
-            () -> {
-              throw new TransactionStateException(
-                  TransactionManager.CODE_NO_TRANSACTION, "该数据源上没有未提交事务");
-            });
+    transactions.rollback(sessionToken, sourceId);
+    return currentStatus(sessionToken);
   }
 
   @GetMapping("/{sourceId}")
   public TransactionStatus status(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
-    return status(sessionToken);
+    return currentStatus(sessionToken);
   }
 
-  private TransactionStatus status(String sessionToken) {
+  private TransactionStatus currentStatus(String sessionToken) {
     return transactions.activeSource(sessionToken)
         .map(source -> new TransactionStatus(true, source))
         .orElseGet(() -> new TransactionStatus(false, null));

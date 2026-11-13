@@ -36,6 +36,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(io.github.dbconsole.web.EnvCredentialSource.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestPropertySource(
     properties = {
@@ -64,17 +65,6 @@ class TransactionMySqlIntegrationTest {
   @Autowired private MockMvc mockMvc;
   @Autowired private TransactionManager transactions;
 
-  @TestConfiguration
-  static class Credentials {
-    @Bean
-    @Primary
-    CredentialSource testCredentialSource() {
-      return ref -> {
-        String value = System.getenv(ref);
-        return value != null ? value : "placeholder-credential";
-      };
-    }
-  }
 
   private String adminPassword() {
     return System.getenv("DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD");
@@ -115,10 +105,14 @@ class TransactionMySqlIntegrationTest {
   }
 
   private MockHttpServletRequestBuilder sql(String sqlText) {
+    return sql("mysql-work-note", sqlText);
+  }
+
+  private MockHttpServletRequestBuilder sql(String sourceId, String sqlText) {
     return post("/api/sql/execute")
         .cookie(session)
         .contentType(MediaType.APPLICATION_JSON)
-        .content("{\"sourceId\":\"mysql-work-note\",\"sql\":\"%s\"}".formatted(sqlText));
+        .content("{\"sourceId\":\"%s\",\"sql\":\"%s\"}".formatted(sourceId, sqlText));
   }
 
   private MockHttpServletRequestBuilder tx(String action) {

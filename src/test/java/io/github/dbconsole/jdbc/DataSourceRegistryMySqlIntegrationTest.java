@@ -49,6 +49,21 @@ import org.springframework.test.web.servlet.MvcResult;
     })
 class DataSourceRegistryMySqlIntegrationTest {
 
+  @TestConfiguration
+  static class Credentials {
+    @Bean
+    @org.springframework.context.annotation.Primary
+    CredentialSource testCredentialSource() {
+      return ref -> {
+        if ("DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD".equals(ref)) {
+          String value = System.getenv(ref);
+          return value != null ? value : "placeholder-credential";
+        }
+        return "definitely-not-the-password";
+      };
+    }
+  }
+
   @Autowired private MockMvc mockMvc;
   @Autowired private DataSourceRegistry registry;
 
@@ -59,21 +74,6 @@ class DataSourceRegistryMySqlIntegrationTest {
         "缺少 DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD，跳过本地 MySQL 集成验收");
   }
 
-  @TestConfiguration
-  static class Credentials {
-    @Bean
-    @Primary
-    CredentialSource testCredentialSource() {
-      // env 缺失时返回占位值让上下文可启动，测试体由 assumeTrue 跳过
-      return ref -> {
-        if ("DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD".equals(ref)) {
-          String value = System.getenv(ref);
-          return value != null ? value : "placeholder-credential";
-        }
-        return "definitely-not-the-password";
-      };
-    }
-  }
 
   private Cookie session;
 

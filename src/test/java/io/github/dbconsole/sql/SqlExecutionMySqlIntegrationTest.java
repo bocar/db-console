@@ -35,6 +35,7 @@ import org.springframework.test.web.servlet.MvcResult;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(io.github.dbconsole.web.EnvCredentialSource.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestPropertySource(
     properties = {
@@ -55,18 +56,6 @@ class SqlExecutionMySqlIntegrationTest {
 
   private Cookie session;
 
-  @TestConfiguration
-  static class Credentials {
-    @Bean
-    @Primary
-    CredentialSource testCredentialSource() {
-      // env 缺失时返回占位值让上下文可启动，测试体由 assumeTrue 跳过
-      return ref -> {
-        String value = System.getenv(ref);
-        return value != null ? value : "placeholder-credential";
-      };
-    }
-  }
 
   private String adminPassword() {
     return System.getenv("DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD");

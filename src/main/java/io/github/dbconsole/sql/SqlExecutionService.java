@@ -93,10 +93,8 @@ public class SqlExecutionService {
       Connection transactionConnection) {
     long startedAt = System.nanoTime();
     boolean inTransaction = transactionConnection != null;
-    // 事务连接由事务层持有：执行后归还（不 close、不改自动提交），并刷新空闲时钟
-    try (Connection scope =
-        inTransaction ? null : connections.open(source)) {
-      Connection connection = inTransaction ? transactionConnection : scope;
+    Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
+    try {
       try (Statement jdbcStatement = connection.createStatement()) {
         int timeoutSeconds =
             Math.max(1, (int) properties.execution().timeout().toSeconds());
@@ -111,17 +109,11 @@ public class SqlExecutionService {
         if (isResultSet) {
           try (ResultSet resultSet = jdbcStatement.getResultSet()) {
             int maxRows = properties.execution().maxPageSize();
-            if (inTransaction) {
-              transactions.touch(sessionToken);
-            }
             return QueryResultMapper.map(resultSet, maxRows, elapsedMs);
           }
         }
         Integer affectedRows =
             statement.kind().isImplicitCommitDdl() ? null : jdbcStatement.getUpdateCount();
-        if (inTransaction) {
-          transactions.touch(sessionToken);
-        }
         return new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction);
       }
     } catch (SQLException exception) {
@@ -133,6 +125,27 @@ public class SqlExecutionService {
           exception.getSQLState(),
           elapsedMs);
       throw new DatabaseExecutionException(safeMessage(exception), exception);
+    } finally {
+      if (inTransaction) {
+        transactions.touch(sessionToken);
+      } else {
+        try {
+          connection.close();
+        } catch (SQLException closeFailure) {
+          // 关闭失败不影响执行结果
+        }
+      }
+    }
+  }
+
+  private Connection openAutoCommit(ResolvedDataSource source) {
+    try {
+      Connection connection = connections.open(source);
+      connection.setAutoCommit(true);
+      return connection;
+    } catch (SQLException exception) {
+      throw new IllegalStateException(
+          "连接打开失败：" + exception.getMessage(), exception);
     }
   }
 

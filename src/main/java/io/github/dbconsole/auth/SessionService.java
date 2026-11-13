@@ -64,7 +64,7 @@ public final class SessionService {
     maybeSweepExpired();
     Instant now = clock.instant();
     LoginSession session = sessionsByToken.get(token);
-    if (session == null || Duration.between(session.lastAccess(), now).compareTo(timeout) > 0) {
+    if (session == null || isExpired(session, now)) {
       sessionsByToken.remove(token);
       return Optional.empty();
     }
@@ -81,8 +81,11 @@ public final class SessionService {
       return false;
     }
     LoginSession session = sessionsByToken.get(token);
-    return session != null
-        && Duration.between(session.lastAccess(), clock.instant()).compareTo(timeout) <= 0;
+    return session != null && !isExpired(session, clock.instant());
+  }
+
+  private boolean isExpired(LoginSession session, Instant now) {
+    return Duration.between(session.lastAccess(), now).compareTo(timeout) > 0;
   }
 
   /** 登出并令牌立即失效；发布会话结束事件供事务层等清理。 */
@@ -100,9 +103,17 @@ public final class SessionService {
       return;
     }
     Instant now = clock.instant();
+    // 过期同样发布会话结束事件，让事务层等依赖即时回滚而非等待轮询
     sessionsByToken
-        .values()
-        .removeIf(session -> Duration.between(session.lastAccess(), now).compareTo(timeout) > 0);
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (isExpired(entry.getValue(), now)) {
+                eventPublisher.publishEvent(new SessionEnded(entry.getKey()));
+                return true;
+              }
+              return false;
+            });
   }
 
   private boolean constantEquals(String expected, String actual) {

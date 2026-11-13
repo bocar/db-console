@@ -62,8 +62,15 @@ const workbenchStyle = computed(() => ({ '--editor-size': `${editorSize.value}%`
 async function loadWorkspaceForSource(): Promise<void> {
   const source = selectedSource.value
   if (!source) return
-  await Promise.all([objectTree.loadTables(source.id), loadHistory(source.id), transaction.sync(source.id)])
+  const tasks: Promise<void>[] = [objectTree.loadTables(source.id), loadHistory(source.id)]
+  // 事务状态只在首次挂载同步；会话中切源时 changeSource 守卫已保证先结束事务
+  if (!workspaceLoadedOnce) {
+    tasks.push(transaction.sync(source.id))
+    workspaceLoadedOnce = true
+  }
+  await Promise.all(tasks)
 }
+let workspaceLoadedOnce = false
 
 onMounted(async () => {
   await dataSources.load()

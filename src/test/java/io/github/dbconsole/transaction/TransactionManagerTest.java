@@ -90,7 +90,7 @@ class TransactionManagerTest {
     String token = loginSession();
     manager.begin(token, source("mysql-work-note"));
 
-    manager.commit(token);
+    manager.commit(token, "mysql-work-note");
 
     verify(connection).commit();
     verify(connection).close();
@@ -103,7 +103,7 @@ class TransactionManagerTest {
     String token = loginSession();
     manager.begin(token, source("mysql-work-note"));
 
-    manager.rollback(token);
+    manager.rollback(token, "mysql-work-note");
 
     verify(connection).rollback();
     verify(connection).close();
@@ -115,10 +115,10 @@ class TransactionManagerTest {
   void commitWithoutTransactionRejected() {
     String token = loginSession();
 
-    assertThatThrownBy(() -> manager.commit(token))
+    assertThatThrownBy(() -> manager.commit(token, "mysql-work-note"))
         .isInstanceOf(TransactionStateException.class)
         .hasMessageContaining("没有未提交事务");
-    assertThatThrownBy(() -> manager.rollback(token))
+    assertThatThrownBy(() -> manager.rollback(token, "mysql-work-note"))
         .isInstanceOf(TransactionStateException.class);
   }
 

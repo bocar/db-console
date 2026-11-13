@@ -45,6 +45,8 @@ export function useManualTransaction() {
       toast.notify(successMessage)
     } catch (error) {
       toast.notify(error instanceof Error ? error.message : failureMessage)
+      // 服务端可能已自动回滚（超时/失效），重新同步状态
+      await sync(sourceId)
     } finally {
       busy.value = false
     }

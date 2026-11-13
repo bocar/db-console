@@ -72,14 +72,14 @@ public class TransactionManager {
         });
   }
 
-  /** 提交整笔事务并释放连接。 */
-  public void commit(String sessionToken) {
-    finish(sessionToken, Connection::commit, "提交");
+  /** 提交整笔事务并释放连接；事务须绑定在指定数据源上。 */
+  public void commit(String sessionToken, String sourceId) {
+    finish(sessionToken, sourceId, Connection::commit, "提交");
   }
 
-  /** 回滚整笔事务并释放连接。 */
-  public void rollback(String sessionToken) {
-    finish(sessionToken, Connection::rollback, "回滚");
+  /** 回滚整笔事务并释放连接；事务须绑定在指定数据源上。 */
+  public void rollback(String sessionToken, String sourceId) {
+    finish(sessionToken, sourceId, Connection::rollback, "回滚");
   }
 
   public boolean hasActive(String sessionToken) {
@@ -149,10 +149,12 @@ public class TransactionManager {
     }
   }
 
-  private void finish(String sessionToken, JdbcAction action, String name) {
+  private void finish(String sessionToken, String sourceId, JdbcAction action, String name) {
     ActiveTransaction transaction = transactionsByToken.remove(sessionToken);
-    if (transaction == null) {
-      throw new TransactionStateException(CODE_NO_TRANSACTION, "当前没有未提交事务");
+    if (transaction == null
+        || (sourceId != null && !transaction.sourceId().equals(sourceId))) {
+      throw new TransactionStateException(
+          CODE_NO_TRANSACTION, "该数据源上没有未提交事务");
     }
     try (Connection connection = transaction.connection()) {
       action.execute(connection);
