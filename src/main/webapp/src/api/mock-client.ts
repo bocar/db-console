@@ -2,6 +2,7 @@ import type { ApiClient } from './client'
 import { ApiClientError } from './http-client'
 import type {
   ConfirmationRequired,
+  ConnectionTestResult,
   DataSourceInfo,
   ExecutionOutcome,
   HistoryEntry,
@@ -119,9 +120,10 @@ export class MockApiClient implements ApiClient {
 
   dataSources = {
     list: async (): Promise<DataSourceInfo[]> => [...this.availableSources],
-    testConnection: async (id: string): Promise<void> => {
+    testConnection: async (id: string): Promise<ConnectionTestResult> => {
       this.requireSource(id)
       await this.delay(120)
+      return { ok: true, kind: 'NONE', message: '连接正常' }
     },
   }
 

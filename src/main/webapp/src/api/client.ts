@@ -1,6 +1,7 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type {
   ConfirmationRequired,
+  ConnectionTestResult,
   DataSourceInfo,
   ExecutionOutcome,
   HistoryEntry,
@@ -20,7 +21,7 @@ export interface ApiClient {
   }
   dataSources: {
     list(): Promise<DataSourceInfo[]>
-    testConnection(id: string): Promise<void>
+    testConnection(id: string): Promise<ConnectionTestResult>
   }
   metadata: {
     tables(sourceId: string): Promise<TableDefinition[]>

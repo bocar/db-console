@@ -1,6 +1,7 @@
 import type { ApiClient } from './client'
 import type {
   ConfirmationRequired,
+  ConnectionTestResult,
   DataSourceInfo,
   ExecutionOutcome,
   HistoryEntry,
@@ -100,8 +101,9 @@ export class HttpApiClient implements ApiClient {
 
   dataSources = {
     list: (): Promise<DataSourceInfo[]> => this.request<DataSourceInfo[]>('GET', '/api/data-sources'),
-    testConnection: (id: string): Promise<void> =>
-      this.request<void>('POST', `/api/data-sources/${encodeURIComponent(id)}/connection-test`),
+    testConnection: (id: string): Promise<ConnectionTestResult> =>
+      this.request<ConnectionTestResult>(
+        'POST', `/api/data-sources/${encodeURIComponent(id)}/connection-test`),
   }
 
   metadata = {

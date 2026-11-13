@@ -44,6 +44,13 @@ export interface SessionInfo {
   username: string
 }
 
+/** 连接测试诊断（F-02）：kind 区分认证失败与超时，message 不含凭据。 */
+export interface ConnectionTestResult {
+  ok: boolean
+  kind: 'NONE' | 'AUTHENTICATION' | 'TIMEOUT' | 'UNAVAILABLE' | 'UNKNOWN'
+  message: string
+}
+
 export interface QueryResult {
   kind: 'QUERY'
   columns: QueryColumn[]

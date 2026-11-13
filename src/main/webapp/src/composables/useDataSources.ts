@@ -42,8 +42,8 @@ export function useDataSources() {
     if (!source || testing.value) return
     testing.value = true
     try {
-      await api.dataSources.testConnection(source.id)
-      toast.notify(`${source.displayName}连接正常。`)
+      const result = await api.dataSources.testConnection(source.id)
+      toast.notify(`${source.displayName}：${result.message}`)
     } catch (error) {
       toast.notify(error instanceof Error ? error.message : '连接测试失败。')
     } finally {
