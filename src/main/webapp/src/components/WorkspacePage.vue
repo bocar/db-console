@@ -40,7 +40,15 @@ const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, elaps
 const transaction = useManualTransaction()
 const historyStore = useSqlHistory()
 const { load: loadHistory, clear: clearHistoryFor } = historyStore
-const execution = useExecution({ dataSources, results, transaction })
+const execution = useExecution({
+  dataSources,
+  results,
+  transaction,
+  onSchemaChanged: () => {
+    const source = selectedSource.value
+    if (source) void objectTree.loadTables(source.id)
+  },
+})
 const { sql, isRunning, canceling, pendingSql, pendingConfirmation, execute, confirmExecution, cancelExecution, cancelQuery } = execution
 
 const editorRef = ref<EditorHandle | null>(null)

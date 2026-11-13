@@ -10,6 +10,8 @@ export interface ExecutionDeps {
   dataSources: ReturnType<typeof useDataSources>
   results: ReturnType<typeof useResults>
   transaction: ReturnType<typeof useManualTransaction>
+  /** DDL 执行成功后通知（触发对象树刷新，F-03/F-16）。 */
+  onSchemaChanged?: () => void
 }
 
 const sql = ref('')
@@ -73,6 +75,7 @@ export function useExecution(deps: ExecutionDeps) {
       } else if (outcome.affectedRows === null) {
         deps.results.showUpdate(outcome)
         toast.notify('语句已在独立连接执行并生效。')
+        deps.onSchemaChanged?.()
       } else {
         deps.results.showUpdate(outcome)
         toast.notify('执行成功，变更已生效。')
