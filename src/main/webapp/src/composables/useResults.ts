@@ -71,6 +71,11 @@ export function useResults() {
     try {
       const result = await api.sql.page(sourceId, sql, targetPage, size)
       if (serial !== requestSerial || sourceId !== currentSourceId.value || sql !== currentSql.value) return
+      if (result.kind !== 'QUERY') {
+        // 翻页请求被取消（F-14）：终态提示，结果区保持原页
+        toast.notify('查询已取消，本次翻页未完成。')
+        return
+      }
       showQuery(result)
     } catch (error) {
       if (serial === requestSerial) {

@@ -271,6 +271,24 @@ class SqlCancelApiTest {
   @Test
   @DisplayName("并发超过上限时执行明确拒绝 CONCURRENCY_EXCEEDED（F-10）")
   void executionBeyondConcurrencyLimitIsRejected() throws Exception {
+    Cookie otherSession = AuthTestSupport.loginSession(mockMvc);
+    startBlockedExecution(session);
+
+    mockMvc
+        .perform(
+            post("/api/sql/execute")
+                .cookie(otherSession)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"sourceId\":\"mysql-work-note\",\"sql\":\"SELECT 2\"}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("CONCURRENCY_EXCEEDED"));
+
+    releaseQuery.countDown();
+  }
+
+  @Test
+  @DisplayName("同一会话同源的第二条执行被拒绝 SESSION_QUERY_RUNNING（F-14「指定」语义）")
+  void secondExecutionOnSameSessionAndSourceRejected() throws Exception {
     startBlockedExecution(session);
 
     mockMvc
@@ -280,7 +298,7 @@ class SqlCancelApiTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"sourceId\":\"mysql-work-note\",\"sql\":\"SELECT 2\"}"))
         .andExpect(status().isUnprocessableEntity())
-        .andExpect(jsonPath("$.code").value("CONCURRENCY_EXCEEDED"));
+        .andExpect(jsonPath("$.code").value("SESSION_QUERY_RUNNING"));
 
     releaseQuery.countDown();
   }

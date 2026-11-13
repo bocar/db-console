@@ -5,6 +5,7 @@ import { API_CLIENT_KEY, type ApiClient } from '../api/client'
 import { fakeApiClient } from '../api/test-support'
 import type { QueryResult } from '../types'
 import { useResults } from './useResults'
+import { useToast } from './useToast'
 
 function result(page: number, value: number, pageSize = 20): QueryResult {
   return {
@@ -80,5 +81,21 @@ describe('useResults 服务端分页', () => {
     expect(handle.queryResult.value).toBeNull()
     expect(handle.page.value).toBe(1)
     expect(handle.visibleRows.value).toEqual([])
+  })
+
+  it('翻页被取消时提示终态且结果区保持原页', async () => {
+    const page = vi.fn<ApiClient['sql']['page']>().mockResolvedValue({
+      kind: 'CANCELLED',
+      elapsedMs: 3,
+    })
+    const handle = mountResults(page)
+    handle.showQuery(result(1, 1), 'mysql-work-note', 'SELECT id FROM t ORDER BY id')
+    useToast().reset()
+
+    await handle.changePage(2)
+
+    expect(handle.page.value).toBe(1)
+    expect(handle.visibleRows.value).toEqual([[1]])
+    expect(useToast().message.value).toContain('查询已取消')
   })
 })

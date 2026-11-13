@@ -247,6 +247,24 @@ class SqlExecutionServiceTest {
   }
 
   @Test
+  @DisplayName("连接打开失败不占用并发槽位，后续执行不再被拒（F-10）")
+  void connectionOpenFailureReleasesConcurrencySlot() throws Exception {
+    when(connections.open(any(ResolvedDataSource.class)))
+        .thenThrow(new SQLException("connection refused", "08006"))
+        .thenReturn(connection);
+    String sql = "UPDATE dbconsole_test_t SET name = 'x' WHERE id = 1";
+    when(jdbcStatement.execute(sql)).thenReturn(false);
+    when(jdbcStatement.getUpdateCount()).thenReturn(1);
+
+    assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("连接打开失败");
+
+    assertThat(executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
+        .isInstanceOf(SqlResponses.UpdateResult.class);
+  }
+
+  @Test
   @DisplayName("同一数据源执行并发超过上限时明确拒绝（F-10）")
   void concurrencyBeyondLimitIsRejectedExplicitly() throws Exception {
     stubEmptyResultRows();
@@ -263,7 +281,7 @@ class SqlExecutionServiceTest {
     assertThat(queryRunning.await(2, TimeUnit.SECONDS)).isTrue();
 
     assertThatThrownBy(
-            () -> executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 2")))
+            () -> executionService.execute("session-token-2", USERNAME, request("SELECT 2")))
         .isInstanceOfSatisfying(
             SqlRejectException.class,
             rejected -> assertThat(rejected.code()).isEqualTo("CONCURRENCY_EXCEEDED"))

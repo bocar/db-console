@@ -40,6 +40,11 @@ public final class RunningQuery {
     this.cancelRequested = true;
   }
 
+  /** 驱动拒绝取消时回退意图：后续与取消无关的失败不得误报为「已取消」。 */
+  void clearCancelRequest() {
+    this.cancelRequested = false;
+  }
+
   boolean isCancelRequested() {
     return cancelRequested;
   }

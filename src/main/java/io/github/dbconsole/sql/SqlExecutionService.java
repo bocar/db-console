@@ -226,16 +226,18 @@ public class SqlExecutionService {
     long startedAt = System.nanoTime();
     String statementSql = analyzer.removeTerminator(sql);
     boolean inTransaction = transactionConnection != null;
-    Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
+    // 打开连接在登记之后、try 之内：打开失败也必须经 finally 释放并发槽位（F-10）
+    Connection connection = null;
     SqlResponses.QueryResult result = null;
     try {
+      connection = inTransaction ? transactionConnection : openAutoCommit(source);
       long offset = ((long) page - 1) * pageSize;
       String baseSql = analyzer.requiresDerivedTableForPagination(statementSql)
           ? PaginationSql.derivedTableWrap(statementSql)
           : statementSql;
       String pagedSql = PaginationSql.appendPageClause(baseSql, pageSize + 1, offset);
       try (Statement jdbcStatement = connection.createStatement()) {
-        runningQueries.bindStatement(running, jdbcStatement);
+        running.attach(jdbcStatement);
         jdbcStatement.setQueryTimeout(timeoutSeconds());
         if (!jdbcStatement.execute(pagedSql)) {
           throw new SQLException("查询未返回结果集");
@@ -268,7 +270,7 @@ public class SqlExecutionService {
         return result;
       }
       long elapsedMs = elapsedMillisSince(startedAt);
-      if (runningQueries.isCancelRequested(running)) {
+      if (running.isCancelRequested()) {
         log.info("查询已取消 sourceId={} elapsedMs={}", source.id(), elapsedMs);
         return new SqlResponses.Cancelled(elapsedMs);
       }
@@ -284,7 +286,7 @@ public class SqlExecutionService {
       runningQueries.complete(running);
       if (inTransaction) {
         transactions.touch(sessionToken);
-      } else {
+      } else if (connection != null) {
         try {
           connection.close();
         } catch (SQLException closeFailure) {
@@ -320,11 +322,13 @@ public class SqlExecutionService {
       RunningQuery running) {
     long startedAt = System.nanoTime();
     boolean inTransaction = transactionConnection != null;
-    Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
+    // 打开连接在登记之后、try 之内：打开失败也必须经 finally 释放并发槽位（F-10）
+    Connection connection = null;
     SqlResponses result = null;
     try {
+      connection = inTransaction ? transactionConnection : openAutoCommit(source);
       try (Statement jdbcStatement = connection.createStatement()) {
-        runningQueries.bindStatement(running, jdbcStatement);
+        running.attach(jdbcStatement);
         jdbcStatement.setQueryTimeout(timeoutSeconds());
         boolean isResultSet = jdbcStatement.execute(sql);
         long elapsedMs = elapsedMillisSince(startedAt);
@@ -356,7 +360,7 @@ public class SqlExecutionService {
         return result;
       }
       long elapsedMs = elapsedMillisSince(startedAt);
-      if (runningQueries.isCancelRequested(running)) {
+      if (running.isCancelRequested()) {
         // 被取消的写入（F-14）与超时同等对待：提交状态无法确认，执行结果未知
         log.warn("写入执行被取消，结果未知 sourceId={} kind={} elapsedMs={}",
             source.id(), statement.kind(), elapsedMs);
@@ -378,7 +382,7 @@ public class SqlExecutionService {
       runningQueries.complete(running);
       if (inTransaction) {
         transactions.touch(sessionToken);
-      } else {
+      } else if (connection != null) {
         try {
           connection.close();
         } catch (SQLException closeFailure) {
