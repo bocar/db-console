@@ -23,6 +23,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,17 +89,8 @@ public class SqlExecutionService {
     }
     // DESC 走对象树同一结构查询（F-06），不执行原生 SQL
     if (statement.kind() == StatementKind.DESCRIBE) {
-      long startedAt = System.nanoTime();
-      try {
-        SqlResponses result = describeAsQuery(source, request.sql());
-        audit.recordExecution(username, source.id(), request.sql(),
-            (System.nanoTime() - startedAt) / 1_000_000, "SUCCEEDED");
-        return result;
-      } catch (RuntimeException exception) {
-        audit.recordExecution(username, source.id(), request.sql(),
-            (System.nanoTime() - startedAt) / 1_000_000, "FAILED");
-        throw exception;
-      }
+      return auditExecution(source, request.sql(), username,
+          () -> describeAsQuery(source, request.sql()));
     }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
@@ -113,7 +105,28 @@ public class SqlExecutionService {
             confirmations.issue(sessionToken, source.id(), request.sql()));
       }
     }
-    return run(source, request.sql(), statement, sessionToken, username, transactionConnection);
+    return auditExecution(source, request.sql(), username,
+        () -> run(source, request.sql(), statement, sessionToken, transactionConnection));
+  }
+
+  private SqlResponses auditExecution(
+      ResolvedDataSource source, String sql, String username,
+      Supplier<SqlResponses> execution) {
+    long startedAt = System.nanoTime();
+    SqlResponses result;
+    try {
+      result = execution.get();
+    } catch (RuntimeException exception) {
+      audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), "FAILED");
+      throw exception;
+    }
+    String status = result instanceof SqlResponses.UnknownOutcome ? "UNKNOWN" : "SUCCEEDED";
+    audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), status);
+    return result;
+  }
+
+  private static long elapsedMillisSince(long startedAt) {
+    return (System.nanoTime() - startedAt) / 1_000_000;
   }
 
   /** DESC 语句转为结构查询结果（F-06）：与对象树共用 TableStructureService。 */
@@ -154,22 +167,10 @@ public class SqlExecutionService {
       String sql,
       SqlStatement statement,
       String sessionToken,
-      String username,
       Connection transactionConnection) {
     long startedAt = System.nanoTime();
     boolean inTransaction = transactionConnection != null;
-    Connection connection;
-    if (inTransaction) {
-      connection = transactionConnection;
-    } else {
-      try {
-        connection = openAutoCommit(source);
-      } catch (IllegalStateException exception) {
-        audit.recordExecution(username, source.id(), sql,
-            (System.nanoTime() - startedAt) / 1_000_000, "FAILED");
-        throw exception;
-      }
-    }
+    Connection connection = inTransaction ? transactionConnection : openAutoCommit(source);
     SqlResponses result = null;
     try {
       try (Statement jdbcStatement = connection.createStatement()) {
@@ -177,7 +178,7 @@ public class SqlExecutionService {
             Math.max(1, (int) properties.execution().timeout().toSeconds());
         jdbcStatement.setQueryTimeout(timeoutSeconds);
         boolean isResultSet = jdbcStatement.execute(sql);
-        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        long elapsedMs = elapsedMillisSince(startedAt);
         log.info(
             "SQL 执行完成 sourceId={} kind={} elapsedMs={}",
             source.id(),
@@ -199,7 +200,6 @@ public class SqlExecutionService {
           result = new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
               statement.kind().isImplicitCommitDdl());
         }
-        audit.recordExecution(username, source.id(), sql, elapsedMs, "SUCCEEDED");
       }
     } catch (SQLException exception) {
       if (result != null) {
@@ -207,20 +207,18 @@ public class SqlExecutionService {
             source.id(), statement.kind(), exception.getSQLState());
         return result;
       }
-      long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+      long elapsedMs = elapsedMillisSince(startedAt);
       boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
       ConnectionFailureKind failureKind = ConnectionFailureKind.classify(exception);
       if (writeStatement && failureKind.isOutcomeUnknown()) {
         log.warn(
             "执行结果未知 sourceId={} kind={} sqlState={} elapsedMs={}",
             source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
-        audit.recordExecution(username, source.id(), sql, elapsedMs, "UNKNOWN");
         return new SqlResponses.UnknownOutcome(safeMessage(exception));
       }
       log.warn(
           "SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
           source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
-      audit.recordExecution(username, source.id(), sql, elapsedMs, "FAILED");
       throw new DatabaseExecutionException(safeMessage(exception), exception);
     } finally {
       if (inTransaction) {

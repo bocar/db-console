@@ -164,47 +164,41 @@ public class TransactionManager {
       throw new TransactionStateException(
           CODE_NO_TRANSACTION, "该数据源上没有未提交事务");
     }
-    String username = transaction.username();
-    long startedAt = clock.instant().toEpochMilli();
-    boolean actionCompleted = false;
-    try (Connection connection = transaction.connection()) {
-      action.execute(connection);
-      actionCompleted = true;
-      auditAction.record(username, transaction.sourceId(),
-          clock.instant().toEpochMilli() - startedAt, "SUCCEEDED");
-    } catch (SQLException exception) {
-      if (actionCompleted) {
-        log.warn("事务{}后连接关闭失败 sourceId={} sqlState={}",
-            name, transaction.sourceId(), exception.getSQLState());
-        return;
-      }
-      auditAction.record(username, transaction.sourceId(),
-          clock.instant().toEpochMilli() - startedAt, outcomeStatus(exception));
-      throw new IllegalStateException(name + "失败：" + exception.getMessage(), exception);
-    }
+    finishTransaction(transaction, action, name, auditAction, null);
   }
 
   private void finishQuietly(String sessionToken, String reason) {
     ActiveTransaction transaction = transactionsByToken.remove(sessionToken);
-    if (transaction == null) {
-      return;
+    if (transaction != null) {
+      finishTransaction(transaction, Connection::rollback, "回滚", audit::recordRollback, reason);
     }
-    long startedAt = clock.instant().toEpochMilli();
-    boolean rollbackCompleted = false;
+  }
+
+  /** quietReason 为 null 时向调用方抛出失败，否则记录日志后返回。 */
+  private void finishTransaction(
+      ActiveTransaction transaction, JdbcAction action, String name,
+      AuditAction auditAction, String quietReason) {
+    long startedAt = clock.millis();
+    boolean actionCompleted = false;
     try (Connection connection = transaction.connection()) {
-      connection.rollback();
-      rollbackCompleted = true;
-      audit.recordRollback(transaction.username(), transaction.sourceId(),
-          clock.instant().toEpochMilli() - startedAt, "SUCCEEDED");
+      action.execute(connection);
+      actionCompleted = true;
+      auditAction.record(transaction.username(), transaction.sourceId(),
+          clock.millis() - startedAt, "SUCCEEDED");
     } catch (SQLException exception) {
-      if (rollbackCompleted) {
-        log.warn("事务回滚后连接关闭失败（{}）sourceId={} sqlState={}",
-            reason, transaction.sourceId(), exception.getSQLState());
+      if (actionCompleted) {
+        String closeContext = quietReason == null ? "" : "（" + quietReason + "）";
+        log.warn("事务{}后连接关闭失败{} sourceId={} sqlState={}",
+            name, closeContext, transaction.sourceId(), exception.getSQLState());
         return;
       }
-      audit.recordRollback(transaction.username(), transaction.sourceId(),
-          clock.instant().toEpochMilli() - startedAt, outcomeStatus(exception));
-      log.warn("事务回滚失败（{}）sourceId={}：{}", reason, transaction.sourceId(), exception.getSQLState());
+      auditAction.record(transaction.username(), transaction.sourceId(),
+          clock.millis() - startedAt, outcomeStatus(exception));
+      if (quietReason == null) {
+        throw new IllegalStateException(name + "失败：" + exception.getMessage(), exception);
+      }
+      log.warn("事务{}失败（{}）sourceId={}：{}",
+          name, quietReason, transaction.sourceId(), exception.getSQLState());
     }
   }
 

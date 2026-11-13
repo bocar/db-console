@@ -35,6 +35,7 @@ public class AuditService {
   private final Duration retention;
   private final Clock clock;
   private final ObjectMapper mapper;
+  private LocalDate lastCleanupDay;
 
   public AuditService(DbConsoleProperties properties, Clock clock, ObjectMapper mapper) {
     this.directory = Path.of(properties.audit().directory());
@@ -101,8 +102,13 @@ public class AuditService {
     }
   }
 
-  /** 淘汰超过保留期的审计文件（每次写入时检查）。 */
+  /** 淘汰超过保留期的审计文件（每天首次写入时检查）。 */
   private void maybeCleanup(Instant now) {
+    LocalDate today = LocalDate.ofInstant(now, clock.getZone());
+    if (today.equals(lastCleanupDay)) {
+      return;
+    }
+    lastCleanupDay = today;
     LocalDate cutoff = LocalDate.ofInstant(now.minus(retention), clock.getZone());
     try (var files = Files.list(directory)) {
       files.filter(path -> {
