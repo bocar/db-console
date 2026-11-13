@@ -254,6 +254,14 @@ class SqlStatementAnalyzerTest {
       assertThat(statement.kind()).isEqualTo(expected);
     }
 
+    @Test
+    @DisplayName("CTE 体内的 INTO 不由分析器拒绝：MySQL 语法本就拒绝，账号权限兜底")
+    void intoInsideCteBodyIsNotAnalyzersConcern() {
+      SqlStatement statement =
+          (SqlStatement) MYSQL.analyze("WITH c AS (SELECT 1 INTO @a) SELECT 2");
+      assertThat(statement.kind()).isEqualTo(StatementKind.SELECT);
+    }
+
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
         "INSERT INTO t VALUES (1) | INSERT",

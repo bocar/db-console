@@ -8,7 +8,8 @@ import java.util.Locale;
 
 /**
  * 方言语句分析器（ADR-0001）：单条语句边界判定（字符串、引用标识符与注释中的分号不切分，
- * 允许单个末尾分号）、操作粗分类（含 WITH 的实际操作）与最外层 WHERE 检测。
+ * 允许单个末尾分号）、操作粗分类（含 WITH 的实际操作、最外层 INTO 使 SELECT 归入超范围）
+ * 与最外层 WHERE 检测。
  * 纯函数，安全兜底由 JDBC 单语句执行与数据库账号权限承担。
  *
  * <p>未闭合的字符串或引用标识符会被吞到输入末尾——结果是整段仍算一条语句，
@@ -159,7 +160,7 @@ public final class SqlStatementAnalyzer {
     }
     SqlTokenizer.Token verb = statement.get(mainVerbIndex);
     if (verb.isWord("SELECT")) {
-      if (hasDepthZeroInto(statement, mainVerbIndex)) {
+      if (hasOuterInto(statement, mainVerbIndex)) {
         return StatementKind.OTHER;
       }
       return StatementKind.SELECT;
@@ -198,34 +199,30 @@ public final class SqlStatementAnalyzer {
   }
 
   /**
-   * SELECT 主句动词后深度 0 的 INTO（OUTFILE/DUMPFILE/变量赋值）使语句不再是纯只读查询（F-05
-   * 只放行原生 SELECT），归入超范围；括号内（子查询）的 INTO 不误拒。
+   * SELECT 主句动词后最外层的 INTO（OUTFILE/DUMPFILE/变量赋值）使语句不再是纯只读查询（F-05
+   * 只放行原生 SELECT），归入超范围；括号内（子查询/CTE 体）的 INTO 不误拒——
+   * MySQL 侧语法本就拒绝 CTE 体内的 INTO，数据库账号权限为最终兜底。
    */
-  private boolean hasDepthZeroInto(List<SqlTokenizer.Token> statement, int mainVerbIndex) {
-    int depth = 0;
-    for (int index = mainVerbIndex + 1; index < statement.size(); index++) {
-      SqlTokenizer.Token token = statement.get(index);
-      if (token.type() == SqlTokenizer.TokenType.LPAREN) {
-        depth++;
-      } else if (token.type() == SqlTokenizer.TokenType.RPAREN) {
-        depth = Math.max(0, depth - 1);
-      } else if (depth == 0 && token.isWord("INTO")) {
-        return true;
-      }
-    }
-    return false;
+  private boolean hasOuterInto(List<SqlTokenizer.Token> statement, int mainVerbIndex) {
+    return hasOuterWord(statement, mainVerbIndex, "INTO");
   }
 
   /** 主句动词之后深度 0 的 WHERE 视为最外层条件；括号内（子查询）不算。 */
   private boolean hasOuterWhere(List<SqlTokenizer.Token> statement, int mainVerbIndex) {
+    return hasOuterWord(statement, mainVerbIndex, "WHERE");
+  }
+
+  /** 自 fromIndex 起扫描：仅深度 0 的指定关键词命中（动词位本身不会等于条件关键词）。 */
+  private boolean hasOuterWord(
+      List<SqlTokenizer.Token> statement, int fromIndex, String keyword) {
     int depth = 0;
-    for (int index = mainVerbIndex; index < statement.size(); index++) {
+    for (int index = fromIndex; index < statement.size(); index++) {
       SqlTokenizer.Token token = statement.get(index);
       if (token.type() == SqlTokenizer.TokenType.LPAREN) {
         depth++;
       } else if (token.type() == SqlTokenizer.TokenType.RPAREN) {
         depth = Math.max(0, depth - 1);
-      } else if (depth == 0 && token.isWord("WHERE")) {
+      } else if (depth == 0 && token.isWord(keyword)) {
         return true;
       }
     }
