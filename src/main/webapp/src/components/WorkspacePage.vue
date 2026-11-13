@@ -290,6 +290,7 @@ onUnmounted(() => {
           :transaction-pending="transactionPending"
           :source-name="selectedSource?.displayName ?? ''"
           :has-result="hasResult"
+          :update-info="results.updateResult.value ?? undefined"
           @tab-change="activeTab = $event"
           @page-change="page = $event"
           @page-size-change="changePageSize"

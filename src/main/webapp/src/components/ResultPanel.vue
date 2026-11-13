@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Check, ChevronLeft, ChevronRight, Clipboard, Code2, Download, Info, KeyRound, Table2 } from 'lucide-vue-next'
-import type { QueryColumn, QueryRow, QueryValue, TableDefinition } from '../types'
+import type { QueryColumn, QueryRow, QueryValue, TableDefinition, UpdateResult } from '../types'
 import { displayQueryValue } from '../display'
 
 const props = defineProps<{
@@ -16,6 +16,7 @@ const props = defineProps<{
   transactionPending: boolean
   sourceName: string
   hasResult: boolean
+  updateInfo?: UpdateResult
 }>()
 
 const emit = defineEmits<{
@@ -207,7 +208,8 @@ const changePage = (event: Event) => {
         <dl>
           <div><dt>目标数据源</dt><dd>{{ sourceName }}</dd></div>
           <div><dt>执行耗时</dt><dd class="mono">{{ elapsed }} ms</dd></div>
-          <div><dt>返回行数</dt><dd class="mono">{{ totalRows }}</dd></div>
+          <div v-if="updateInfo"><dt>受影响行数</dt><dd class="mono">{{ updateInfo.affectedRows === null ? '驱动未提供行数' : updateInfo.affectedRows }}</dd></div>
+          <div v-else><dt>返回行数</dt><dd class="mono">{{ totalRows }}</dd></div>
           <div><dt>事务状态</dt><dd :class="{ 'pending-text': transactionPending }">{{ transactionPending ? '有未提交变更' : '无未提交变更' }}</dd></div>
           <div><dt>提交方式</dt><dd>手动提交 / 回滚</dd></div>
           <div><dt>自动重试</dt><dd>已关闭</dd></div>
