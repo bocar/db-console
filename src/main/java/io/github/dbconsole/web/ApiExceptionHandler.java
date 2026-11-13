@@ -2,8 +2,9 @@ package io.github.dbconsole.web;
 
 import io.github.dbconsole.jdbc.UnknownDataSourceException;
 import io.github.dbconsole.sql.DatabaseExecutionException;
-import io.github.dbconsole.transaction.TransactionStateException;
 import io.github.dbconsole.sql.SqlRejectException;
+import io.github.dbconsole.transaction.TransactionManager;
+import io.github.dbconsole.transaction.TransactionStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -37,10 +38,10 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(TransactionStateException.class)
   public ResponseEntity<ApiError> handleTransactionState(TransactionStateException ex) {
-    org.springframework.http.HttpStatus status =
-        io.github.dbconsole.transaction.TransactionManager.CODE_NO_TRANSACTION.equals(ex.code())
-            ? org.springframework.http.HttpStatus.BAD_REQUEST
-            : org.springframework.http.HttpStatus.CONFLICT;
+    HttpStatus status =
+        TransactionManager.CODE_NO_TRANSACTION.equals(ex.code())
+            ? HttpStatus.BAD_REQUEST
+            : HttpStatus.CONFLICT;
     return ResponseEntity.status(status).body(new ApiError(ex.code(), ex.getMessage()));
   }
 

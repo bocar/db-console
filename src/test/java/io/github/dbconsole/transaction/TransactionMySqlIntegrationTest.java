@@ -48,6 +48,14 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "db-console.data-sources[0].jdbc-url=jdbc:mysql://localhost:3306/work_note",
       "db-console.data-sources[0].username=root",
       "db-console.data-sources[0].credential-ref=DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD",
+      "db-console.data-sources[1].id=other-source",
+      "db-console.data-sources[1].display-name=另一数据源",
+      "db-console.data-sources[1].environment=DEVELOPMENT",
+      "db-console.data-sources[1].database-type=MYSQL",
+      "db-console.data-sources[1].compatibility-mode=NATIVE",
+      "db-console.data-sources[1].jdbc-url=jdbc:mysql://127.0.0.1:1/never",
+      "db-console.data-sources[1].username=root",
+      "db-console.data-sources[1].credential-ref=DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD",
     })
 class TransactionMySqlIntegrationTest {
 
@@ -179,6 +187,22 @@ class TransactionMySqlIntegrationTest {
     mockMvc.perform(tx("rollback")).andExpect(status().isOk());
 
     assertThat(visibleRows()).isEqualTo("0");
+  }
+
+  @Test
+  void executingOnOtherSourceWhileTransactionOpenIsRejected() throws Exception {
+    mockMvc.perform(tx("begin")).andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            post("/api/sql/execute")
+                .cookie(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"sourceId\":\"other-source\",\"sql\":\"SELECT 1\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("TRANSACTION_OPEN"));
+
+    mockMvc.perform(tx("rollback")).andExpect(status().isOk());
   }
 
   @Test

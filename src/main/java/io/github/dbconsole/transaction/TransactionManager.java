@@ -13,6 +13,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 
 /**
  * 手动事务管理（F-16）：同一登录会话 + 数据源绑定单一 JDBC 连接（自动提交关闭），
@@ -25,6 +27,7 @@ public class TransactionManager {
   public static final String CODE_NO_TRANSACTION = "NO_TRANSACTION";
 
   private static final Logger log = LoggerFactory.getLogger(TransactionManager.class);
+  private static final long SWEEP_INTERVAL_MILLIS = 30_000;
 
   private final ConnectionFactory connections;
   private final SessionService sessions;
@@ -49,11 +52,21 @@ public class TransactionManager {
             throw new TransactionStateException(
                 CODE_TRANSACTION_OPEN, "已有未提交事务，请先提交或回滚后再开启新事务");
           }
+          Connection connection = null;
           try {
-            Connection connection = connections.open(source);
+            connection = connections.open(source);
             connection.setAutoCommit(false);
-            return new ActiveTransaction(source.id(), connection, clock.instant());
+            Connection held = connection;
+            connection = null;
+            return new ActiveTransaction(source.id(), held, clock.instant());
           } catch (SQLException exception) {
+            if (connection != null) {
+              try {
+                connection.close();
+              } catch (SQLException closeFailure) {
+                exception.addSuppressed(closeFailure);
+              }
+            }
             throw new IllegalStateException("事务连接打开失败：" + exception.getMessage(), exception);
           }
         });
@@ -109,13 +122,13 @@ public class TransactionManager {
   }
 
   /** 登出事件监听（SessionService 发布）。 */
-  @org.springframework.context.event.EventListener(io.github.dbconsole.auth.SessionService.SessionEnded.class)
-  public void onSessionEnded(io.github.dbconsole.auth.SessionService.SessionEnded event) {
+  @EventListener(SessionService.SessionEnded.class)
+  public void onSessionEnded(SessionService.SessionEnded event) {
     onSessionEnd(event.token());
   }
 
   /** 定时清理（空闲超时/会话失效），由调度器调用。 */
-  @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30_000)
+  @Scheduled(fixedDelay = SWEEP_INTERVAL_MILLIS)
   public void scheduledCleanup() {
     cleanupExpired();
   }
@@ -127,7 +140,7 @@ public class TransactionManager {
       String token = entry.getKey();
       ActiveTransaction transaction = entry.getValue();
       boolean idle = Duration.between(transaction.lastActivity(), now).compareTo(idleTimeout) > 0;
-      boolean sessionGone = sessions.authenticate(token).isEmpty();
+      boolean sessionGone = !sessions.isSessionValid(token);
       if (idle || sessionGone) {
         log.info(
             "事务清理 sourceId={} 原因={} 已回滚", transaction.sourceId(), idle ? "空闲超时" : "会话失效");

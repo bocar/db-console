@@ -2,6 +2,7 @@ package io.github.dbconsole.auth;
 
 import io.github.dbconsole.config.DbConsoleProperties;
 import java.time.Clock;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,7 +19,7 @@ public class AuthConfig {
   public SessionService sessionService(
       DbConsoleProperties properties,
       Clock clock,
-      org.springframework.context.ApplicationEventPublisher eventPublisher) {
+      ApplicationEventPublisher eventPublisher) {
     return new SessionService(
         properties.login(), properties.session().timeout(), clock, eventPublisher);
   }

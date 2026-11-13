@@ -35,6 +35,7 @@ public class TransactionController {
   public TransactionStatus commit(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
+    requireActiveOnSource(sessionToken, sourceId);
     transactions.commit(sessionToken);
     return new TransactionStatus(false, null);
   }
@@ -43,8 +44,22 @@ public class TransactionController {
   public TransactionStatus rollback(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
+    requireActiveOnSource(sessionToken, sourceId);
     transactions.rollback(sessionToken);
     return new TransactionStatus(false, null);
+  }
+
+  /** 事务操作的数据源须与活动事务一致：防止用别源路径操作本源事务。 */
+  private void requireActiveOnSource(String sessionToken, String sourceId) {
+    transactions
+        .activeSource(sessionToken)
+        .filter(active -> active.equals(sourceId))
+        .ifPresentOrElse(
+            active -> {},
+            () -> {
+              throw new TransactionStateException(
+                  TransactionManager.CODE_NO_TRANSACTION, "该数据源上没有未提交事务");
+            });
   }
 
   @GetMapping("/{sourceId}")

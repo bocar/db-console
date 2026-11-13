@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.context.ApplicationEventPublisher;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -25,7 +26,7 @@ public final class SessionService {
   private final DbConsoleProperties.LoginProperties login;
   private final Duration timeout;
   private final Clock clock;
-  private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+  private final ApplicationEventPublisher eventPublisher;
   private final SecureRandom random = new SecureRandom();
   private final Map<String, LoginSession> sessionsByToken = new ConcurrentHashMap<>();
   private long authenticationCount;
@@ -34,7 +35,7 @@ public final class SessionService {
       DbConsoleProperties.LoginProperties login,
       Duration timeout,
       Clock clock,
-      org.springframework.context.ApplicationEventPublisher eventPublisher) {
+      ApplicationEventPublisher eventPublisher) {
     this.login = login;
     this.timeout = timeout;
     this.clock = clock;
@@ -69,6 +70,19 @@ public final class SessionService {
     }
     session.slideAccess(now);
     return Optional.of(session.username());
+  }
+
+  /**
+   * 无副作用的会话有效性检查：只判过期与存在，不滑动续期。
+   * 供事务清理等周期任务使用，避免巡检本身把会话续活。
+   */
+  public boolean isSessionValid(String token) {
+    if (token == null || token.isBlank()) {
+      return false;
+    }
+    LoginSession session = sessionsByToken.get(token);
+    return session != null
+        && Duration.between(session.lastAccess(), clock.instant()).compareTo(timeout) <= 0;
   }
 
   /** 登出并令牌立即失效；发布会话结束事件供事务层等清理。 */

@@ -50,13 +50,13 @@ export function useManualTransaction() {
     }
   }
 
-  /** 从服务端同步事务状态（登入/切换数据源后）。 */
+  /** 从服务端同步事务状态（登入/切换数据源后）；失败保持现状不误清。 */
   async function sync(sourceId: string): Promise<void> {
     try {
       const status = await api.transaction.status(sourceId)
       active.value = status.active
-    } catch {
-      active.value = false
+    } catch (error) {
+      toast.notify(error instanceof Error ? `事务状态同步失败：${error.message}` : '事务状态同步失败。')
     }
   }
 
