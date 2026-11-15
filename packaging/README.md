@@ -45,7 +45,7 @@ JDK 17（毕昇/Kona/Dragonwell），解压即用；运行不探测系统 java�
 | CPU | 架构 | 操作系统 | 随包 JDK | 验证日期 | 结果 |
 | --- | --- | --- | --- | --- | --- |
 | （例）鲲鹏 920 | aarch64 | 银河麒麟 V10 SP3 | 毕昇 JDK 17.0.x | | ✅ |
-| Intel Xeon Platinum（阿里云 ECS） | x86_64 | CentOS Linux 7 (Core) | 腾讯 Kona 17.0.21.0.3 | 2026-11-15 | ✅ |
+| Intel Xeon Platinum（阿里云 ECS） | x86_64 | CentOS Linux 7 (Core) | 腾讯 Kona 17.0.21.0.3 | 2026-11-15 | ✅（含真实 DM8 实库联测：连接测试、元数据、执行、服务端分页） |
 
 验证内容：`bin/start.sh --dry-run`、应用启动、登录、MySQL/DM8 各执行一次查询、
 `bin/stop.sh`/systemctl 停止（参考 docs/REQUIREMENTS.md 第 5 节发布验收）。
