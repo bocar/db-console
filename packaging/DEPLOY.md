@@ -46,7 +46,8 @@ db-console/
 
 3. **准备凭据环境变量**：将 `config/dbconsole.env.example` 复制为
    `config/dbconsole.env`（权限 600），填写登录密码 `DB_CONSOLE_ADMIN_PASSWORD`
-   与各 `credential-ref` 引用的变量。
+   与各 `credential-ref` 引用的变量。`bin/start.sh` 会自动加载该文件（systemd
+   部署则由 `EnvironmentFile` 加载），无需手动 source。
 
 4. **自检**（可选但建议）：
 

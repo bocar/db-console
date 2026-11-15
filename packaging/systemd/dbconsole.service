@@ -15,7 +15,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=exec
+# Type=simple：CentOS 7 的 systemd 219 不支持 Type=exec；start.sh 以 exec 方式替换为 java，语义等同
+Type=simple
 WorkingDirectory=/opt/dbconsole
 ExecStart=/opt/dbconsole/bin/start.sh
 EnvironmentFile=/opt/dbconsole/config/dbconsole.env
@@ -23,6 +24,8 @@ EnvironmentFile=/opt/dbconsole/config/dbconsole.env
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=90
+# JVM 收 SIGTERM 的退出码是 143，不视为失败
+SuccessExitStatus=143
 
 [Install]
 WantedBy=multi-user.target

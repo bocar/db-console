@@ -72,6 +72,14 @@ if [ -z "${SPRING_CONFIG_ADDITIONAL_LOCATION:-}" ]; then
   export SPRING_CONFIG_ADDITIONAL_LOCATION="file:$APP_HOME/config/db-console.yml,file:$APP_HOME/config/datasources.yml"
 fi
 
+# 凭据环境变量：存在 config/dbconsole.env 时自动加载（裸进程模式免手动 source；systemd 走 EnvironmentFile）
+if [ -f "$APP_HOME/config/dbconsole.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$APP_HOME/config/dbconsole.env"
+  set +a
+fi
+
 # 工作目录固定为部署根目录，使默认审计目录 ./audit 等相对路径落位确定
 cd "$APP_HOME"
 # JAVA_OPTS 按惯例做空白切分（如 "-Xms256m -Xmx1g"）；${OPTS[@]+...} 为 set -u 下的空数组安全写法

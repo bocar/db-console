@@ -135,12 +135,14 @@ assemble() { # $1=arch $2=jdk 原始包
   home_dir=$(cd "$(dirname "$java_bin")/.." && pwd)
   mv "$home_dir" "$app/jdk/jdk17-$arch"
 
-  # 防呆：随包 JDK 必须 17+，避免误把 JDK 8 原始包打进去
-  local bundled major
+  # 防呆：随包 JDK 必须 17+，避免误把 JDK 8 原始包打进去。
+  # 优先读 JDK 的 release 文件（纯文本，跨架构打包可用）；缺失时才执行 java -version（仅同架构机器可用）
+  local bundled ver
   bundled="$app/jdk/jdk17-$arch/bin/java"
-  major=$(java_major "$bundled")
-  [ "$major" -ge 17 ] 2>/dev/null \
-    || die "随包 JDK 主版本为 \"${major}\"（${tarball}），需要 17+"
+  ver="$(sed -n 's/^JAVA_VERSION="\([0-9][0-9]*\).*/\1/p' "$app/jdk/jdk17-$arch/release" 2>/dev/null | head -n 1 || true)"
+  [ -n "$ver" ] || ver="$(java_major "$bundled" 2>/dev/null || true)"
+  [ -n "$ver" ] && [ "$ver" -ge 17 ] 2>/dev/null \
+    || die "随包 JDK 版本校验失败（${tarball}，识别到版本 \"${ver:-无}\"），需要 17+"
 
   local out_tar sum
   out_tar="$OUT_DIR/db-console-$(project_version)-linux-$arch.tar.gz"
