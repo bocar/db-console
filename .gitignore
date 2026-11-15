@@ -21,6 +21,10 @@ config/local/
 # --- 本地 Playwright 工件 ---
 .playwright-mcp/
 
+# --- 信创离线交付打包（packaging/ 脚本本身入库；原始 JDK 包与产物不入库） ---
+/packaging/packages/
+/packaging/out/
+
 # --- AI 工具与代理环境（个人环境，不入产品库；见 404b955） ---
 .agents/
 .claude/

@@ -100,3 +100,26 @@ docker run --rm -p 8080:8080 \
 ```
 
 发布前按 [验收要求](docs/REQUIREMENTS.md#5-发布验收) 验证 JAR、镜像和首批数据库。
+
+### 离线交付（信创麒麟 V10 / CentOS / Debian）
+
+面向鲲鹏/飞腾/海光/兆芯 + 麒麟 V10 SP1+ / CentOS 7+ / Debian 10+（含 Ubuntu 等 glibc ≥ 2.17 发行版）的离线交付包由 [packaging/](packaging/) 生成：JAR 随包携带 JDK 17，运行不依赖、也不触碰服务器上已有的 JDK（含毕昇 JDK 8），无需系统级安装。决策见 [ADR-0005](docs/adr/0005-bundled-jdk17-delivery.md)。
+
+**打包**（维护者在构建机执行，需 JDK 17 + Maven 3.9+；详见 [packaging/README.md](packaging/README.md)）：
+
+```bash
+cp bisheng-jdk-17.x.y-linux-aarch64.tar.gz packaging/packages/   # 放入 JDK 17 原始包（文件名含 aarch64 或 x64）
+./packaging/package.sh                                           # 产出 packaging/out/db-console-<版本>-linux-<架构>.tar.gz 与 .sha256
+```
+
+**运行**（现场解压即用，无需预装 Java；完整说明随发行包分发，源文件 [packaging/DEPLOY.md](packaging/DEPLOY.md)）：
+
+```bash
+tar -xzf db-console-*-linux-*.tar.gz -C /opt && cd /opt/db-console
+cp config/db-console.example.yml config/db-console.yml           # 两份配置按现场修改
+cp config/datasources.example.yml config/datasources.yml
+cp config/dbconsole.env.example config/dbconsole.env && chmod 600 config/dbconsole.env  # 填登录密码与数据源凭据
+bin/start.sh --dry-run                                           # 自检：JDK 选择、配置、启动命令
+bin/start.sh                                                     # 前台启动；--daemon 后台；systemd 部署见 DEPLOY.md
+bin/status.sh                                                    # 状态检查（退出码 0/1/2 供监控用）
+```
