@@ -4,8 +4,8 @@ import io.github.dbconsole.config.DbConsoleProperties.DataSourceEnvironment;
 import io.github.dbconsole.dialect.SqlStatement;
 import io.github.dbconsole.dialect.StatementKind;
 
-/** 确认规则分派（F-09/F-16）：环境 × 操作类别 × 最外层 WHERE。 */
-public final class ConfirmationDecision {
+/** 确认规则分派（F-09/F-16）：环境 × 操作类别 × 最外层 WHERE。由确认门内部调用。 */
+final class ConfirmationDecision {
 
   public enum Requirement {
     NOT_REQUIRED,

@@ -1,5 +1,7 @@
 package io.github.dbconsole.sql;
 
+import io.github.dbconsole.config.DbConsoleProperties.DataSourceEnvironment;
+import io.github.dbconsole.dialect.SqlStatement;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
@@ -10,8 +12,9 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * 执行确认凭据（F-09）：令牌由「会话令牌 + 数据源标识 + SQL 文本」计算 HMAC，
- * 会话、数据源或 SQL 任一变化即失效（登出/过期/换会话都不再可用）；
+ * 执行确认（F-09）：确认规则与环境分级（F-16）的判定、令牌的「会话 + 数据源 + SQL 文本」
+ * HMAC 绑定，以及「校验失败即随附重新签发的新令牌」不变式，统一收口在 {@link #check}。
+ * 调用方只面对 Passed / Required 二选一，无需了解规则与令牌的先后顺序。
  * 密钥为进程内随机，重启后旧令牌自然作废。
  */
 public final class ConfirmationService {
@@ -26,11 +29,46 @@ public final class ConfirmationService {
     this.keySpec = new SecretKeySpec(key, HMAC_ALGORITHM);
   }
 
-  public String issue(String sessionToken, String sourceId, String sql) {
+  /** 确认门判定结果：通过，或要求确认（携带原因、DDL 标志与重新签发的新令牌）。 */
+  public sealed interface ConfirmationOutcome permits Passed, Required {}
+
+  /** 无需确认（或呈现令牌校验通过），调用方继续执行语句。 */
+  public record Passed() implements ConfirmationOutcome {}
+
+  /** 要求确认：reason 为要求枚举名（wire 契约），freshToken 与「会话 + 数据源 + SQL」绑定。 */
+  public record Required(String reason, boolean implicitCommitDdl, String freshToken)
+      implements ConfirmationOutcome {}
+
+  /**
+   * 确认门：判定当前语句是否需要执行确认，需要时校验呈现令牌；
+   * 校验失败即重新签发新令牌随 Required 返回（失败即重签不变式由此强制）。
+   */
+  public ConfirmationOutcome check(
+      String sessionToken,
+      String sourceId,
+      DataSourceEnvironment environment,
+      SqlStatement statement,
+      String sql,
+      String presentedToken) {
+    ConfirmationDecision.Requirement requirement =
+        ConfirmationDecision.evaluate(environment, statement);
+    if (requirement == ConfirmationDecision.Requirement.NOT_REQUIRED) {
+      return new Passed();
+    }
+    if (verify(sessionToken, sourceId, sql, presentedToken)) {
+      return new Passed();
+    }
+    return new Required(
+        requirement.name(),
+        requirement == ConfirmationDecision.Requirement.IMPLICIT_COMMIT_DDL,
+        issue(sessionToken, sourceId, sql));
+  }
+
+  String issue(String sessionToken, String sourceId, String sql) {
     return hmac(message(sessionToken, sourceId, sql));
   }
 
-  public boolean verify(String sessionToken, String sourceId, String sql, String token) {
+  boolean verify(String sessionToken, String sourceId, String sql, String token) {
     if (token == null || token.isBlank()) {
       return false;
     }

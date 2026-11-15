@@ -86,18 +86,12 @@ public class SqlExecutionService {
               new StatementExecution.PageRequest(1, properties.execution().defaultPageSize()),
               true)));
     }
-    ConfirmationDecision.Requirement requirement =
-        ConfirmationDecision.evaluate(source.environment(), statement);
-    if (requirement != ConfirmationDecision.Requirement.NOT_REQUIRED) {
-      boolean verified =
-          confirmations.verify(
-              sessionToken, source.id(), request.sql(), request.confirmationToken());
-      if (!verified) {
-        return new SqlResponses.ConfirmationRequired(
-            requirement.name(),
-            statement.kind().isImplicitCommitDdl(),
-            confirmations.issue(sessionToken, source.id(), request.sql()));
-      }
+    if (confirmations.check(
+            sessionToken, source.id(), source.environment(), statement,
+            request.sql(), request.confirmationToken())
+        instanceof ConfirmationService.Required required) {
+      return new SqlResponses.ConfirmationRequired(
+          required.reason(), required.implicitCommitDdl(), required.freshToken());
     }
     RunningQuery running = runningQueries.register(sessionToken, source.id());
     return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
