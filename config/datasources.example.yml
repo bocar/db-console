@@ -1,3 +1,9 @@
+# 数据源配置样例。复制为 datasources.yml 后按现场修改。
+# 密码一律不落本文件：credential-ref 指向环境变量名，实际值放 dbconsole.env。
+#
+# environment 字段决定写操作的二次确认规则：
+#   PRODUCTION  生产库——所有增删改均需二次确认，无 WHERE 的更新/删除强制确认
+#   DEVELOPMENT 非生产——仅无 WHERE 的更新/删除需确认
 db-console:
   data-sources:
     - id: mysql-development
@@ -8,3 +14,13 @@ db-console:
       jdbc-url: jdbc:mysql://127.0.0.1:3306/db_console_example
       username: db_console_example
       credential-ref: DB_CONSOLE_MYSQL_DEVELOPMENT_PASSWORD
+
+    # 达梦 DM8 示例：按现场修改后取消注释，并在 dbconsole.env 中补对应凭据变量
+    # - id: dm8-production
+    #   display-name: DM8 生产库
+    #   environment: PRODUCTION
+    #   database-type: DM8
+    #   compatibility-mode: NATIVE
+    #   jdbc-url: jdbc:dm://127.0.0.1:5236
+    #   username: SYSDBA
+    #   credential-ref: DB_CONSOLE_DM8_PRODUCTION_PASSWORD
