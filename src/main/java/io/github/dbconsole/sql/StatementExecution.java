@@ -103,11 +103,8 @@ class StatementExecution {
     SqlStatementAnalyzer analyzer =
         SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
     String statementSql = analyzer.removeTerminator(sql);
-    String baseSql =
-        analyzer.requiresDerivedTableForPagination(statementSql)
-            ? PaginationSql.derivedTableWrap(statementSql)
-            : statementSql;
-    String pagedSql = PaginationSql.appendPageClause(baseSql, page.pageSize() + 1, offset(page));
+    String pagedSql =
+        PaginationSql.pagedSql(analyzer, statementSql, page.page(), page.pageSize());
     SqlResponses.QueryResult result = null;
     try (Statement jdbcStatement = connection.createStatement()) {
       request.running().attach(jdbcStatement);
@@ -141,8 +138,7 @@ class StatementExecution {
     }
     Long totalRows = countTotalRows(connection, source.id(), statementSql);
     if (totalRows != null) {
-      int totalPages =
-          (int) (totalRows / page.pageSize() + (totalRows % page.pageSize() == 0 ? 0 : 1));
+      int totalPages = PaginationSql.totalPages(totalRows, page.pageSize());
       result =
           new SqlResponses.QueryResult(result.columns(), result.rows(), result.elapsedMs(),
               result.truncated(), result.page(), result.pageSize(), result.hasNextPage(),
@@ -247,10 +243,6 @@ class StatementExecution {
       log.info("总数统计不可用 sourceId={} sqlState={}", sourceId, exception.getSQLState());
       return null;
     }
-  }
-
-  private static long offset(PageRequest page) {
-    return (long) (page.page() - 1) * page.pageSize();
   }
 
   /** 查询超时秒数：配置不足 1 秒按 1 秒兜底。 */

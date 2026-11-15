@@ -59,14 +59,9 @@ public class SqlExecutionService {
     if (request.sql().length() > properties.execution().maxSqlLength()) {
       throw new SqlRejectException("SQL_TOO_LONG", "SQL 长度超过上限");
     }
-    ResolvedDataSource source = registry.resolve(request.sourceId());
-    SqlStatementAnalyzer analyzer =
-        SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
-    SqlAnalysisResult analysis = analyzer.analyze(request.sql());
-    if (analysis instanceof RejectedSql rejected) {
-      throw new SqlRejectException("INVALID_SQL", rejected.message());
-    }
-    SqlStatement statement = (SqlStatement) analysis;
+    Precheck precheck = precheck(request.sourceId(), request.sql());
+    ResolvedDataSource source = precheck.source();
+    SqlStatement statement = precheck.statement();
     if (statement.kind() == StatementKind.OTHER) {
       throw new SqlRejectException("OUT_OF_SCOPE", "该语句超出允许的操作范围");
     }
@@ -124,14 +119,9 @@ public class SqlExecutionService {
     if (request.pageSize() > properties.execution().maxPageSize()) {
       throw new SqlRejectException("INVALID_PAGE_SIZE", "每页行数超过上限");
     }
-    ResolvedDataSource source = registry.resolve(request.sourceId());
-    SqlStatementAnalyzer analyzer =
-        SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
-    SqlAnalysisResult analysis = analyzer.analyze(request.sql());
-    if (analysis instanceof RejectedSql rejected) {
-      throw new SqlRejectException("INVALID_SQL", rejected.message());
-    }
-    SqlStatement statement = (SqlStatement) analysis;
+    Precheck precheck = precheck(request.sourceId(), request.sql());
+    ResolvedDataSource source = precheck.source();
+    SqlStatement statement = precheck.statement();
     if (statement.kind() != StatementKind.SELECT) {
       throw new SqlRejectException("PAGINATION_NOT_ALLOWED", "只有只读查询支持分页");
     }
@@ -143,6 +133,25 @@ public class SqlExecutionService {
             request.sql(),
             new StatementExecution.PageRequest(request.page(), request.pageSize()),
             false)));
+  }
+
+  /**
+   * execute/page 共享的前置分析（解析数据源 → 构造方言分析器 → fail-closed 分析）。
+   * SQL 长度检查留在各入口：两入口的错误优先级原序不同（page 的 pageSize 检查居中）。
+   * SqlAnalysisResult 的 RejectedSql 变体在此坍缩为 INVALID_SQL 拒绝，
+   * 不向调用方暴露 sealed 层次；方言层保持对 sql 包零依赖。
+   */
+  private record Precheck(ResolvedDataSource source, SqlStatement statement) {}
+
+  private Precheck precheck(String sourceId, String sql) {
+    ResolvedDataSource source = registry.resolve(sourceId);
+    SqlStatementAnalyzer analyzer =
+        SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
+    SqlAnalysisResult analysis = analyzer.analyze(sql);
+    if (analysis instanceof RejectedSql rejected) {
+      throw new SqlRejectException("INVALID_SQL", rejected.message());
+    }
+    return new Precheck(source, (SqlStatement) analysis);
   }
 
   /** 审计终态由响应变体穷尽定义（auditStatus），调用方不拼装状态串。 */
