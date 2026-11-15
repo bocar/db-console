@@ -1,0 +1,105 @@
+# 打包冒烟：不构建真实应用，用 stub JAR 与 stub JDK 17 快速验证 packaging/ 脚本链路
+# （架构识别、JDK 解包与改名、版本防呆、产物与 sha256、发行包内 start.sh 的 JDK 解析）。
+name: packaging-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/packaging-smoke.yml'
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/packaging-smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax & lint scripts
+        run: |
+          for f in packaging/package.sh packaging/bin/*.sh; do
+            bash -n "$f"
+          done
+          shellcheck packaging/package.sh packaging/bin/*.sh
+
+      - name: Prepare stub inputs (JAR + JDK 17 tarballs)
+        run: |
+          mkdir -p target packaging/packages
+          echo 'stub jar for packaging smoke' > target/db-console.jar
+          stub_jdk() {
+            arch="$1"; ver="$2"
+            d="$(mktemp -d)"
+            mkdir -p "$d/bisheng-jdk-$ver/bin"
+            printf '#!/bin/sh\necho "openjdk version \\"%s\\" 2026-01-20" >&2\n' "$ver" \
+              > "$d/bisheng-jdk-$ver/bin/java"
+            chmod +x "$d/bisheng-jdk-$ver/bin/java"
+            tar -czf "packaging/packages/stub-jdk17-$arch.tar.gz" -C "$d" "bisheng-jdk-$ver"
+            rm -rf "$d"
+          }
+          stub_jdk aarch64 17.0.12
+          stub_jdk x64 17.0.12
+
+      - name: Package both architectures
+        run: ./packaging/package.sh --no-build
+
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
+          ver="$(sed -n '/<artifactId>db-console<\/artifactId>/{n;p;}' pom.xml \
+            | sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' | head -n 1)"
+          echo "version from pom: $ver"
+          for arch in aarch64 x64; do
+            t="packaging/out/db-console-$ver-linux-$arch.tar.gz"
+            test -f "$t"
+            (cd packaging/out && sha256sum -c "db-console-$ver-linux-$arch.tar.gz.sha256")
+            for member in \
+              db-console/db-console.jar \
+              db-console/bin/start.sh db-console/bin/stop.sh \
+              db-console/bin/restart.sh db-console/bin/status.sh \
+              "db-console/jdk/jdk17-$arch/bin/java" \
+              db-console/systemd/dbconsole.service \
+              db-console/config/dbconsole.env.example \
+              db-console/config/db-console.example.yml \
+              db-console/config/datasources.example.yml \
+              db-console/README.md; do
+              tar -tzf "$t" | grep -qx "$member"
+            done
+            echo "OK: $t"
+          done
+
+      - name: Smoke start.sh from extracted bundle
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64|amd64) arch=x64 ;;
+            aarch64|arm64) arch=aarch64 ;;
+            *) echo "unexpected runner arch: $(uname -m)" >&2; exit 1 ;;
+          esac
+          d="$(mktemp -d)"
+          tar -xzf "packaging/out/db-console-"*"linux-$arch.tar.gz" -C "$d"
+          cp "$d/db-console/config/db-console.example.yml" "$d/db-console/config/db-console.yml"
+          cp "$d/db-console/config/datasources.example.yml" "$d/db-console/config/datasources.yml"
+          "$d/db-console/bin/start.sh" --dry-run | tee dryrun.txt
+          grep -q 'openjdk version "17.0.12"' dryrun.txt
+          grep -q "jdk17-$arch" dryrun.txt
+          rm -rf "$d"
+
+      - name: Negative guard — JDK 8 tarball must be rejected
+        run: |
+          set -euo pipefail
+          d="$(mktemp -d)"
+          mkdir -p "$d/bisheng-jdk-1.8.0_392/bin"
+          printf '#!/bin/sh\necho "openjdk version \\"1.8.0_392\\" 2024-01-01" >&2\n' \
+            > "$d/bisheng-jdk-1.8.0_392/bin/java"
+          chmod +x "$d/bisheng-jdk-1.8.0_392/bin/java"
+          tar -czf packaging/packages/stub-jdk8-x64.tar.gz -C "$d" bisheng-jdk-1.8.0_392
+          if ./packaging/package.sh --arch x64 --no-build; then
+            echo 'ERROR: JDK 8 tarball was accepted by package.sh' >&2
+            exit 1
+          fi
+          echo 'OK: JDK 8 tarball rejected as expected'
