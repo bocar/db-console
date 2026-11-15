@@ -5,6 +5,9 @@ import java.util.List;
 /** 执行响应的密封层次（wire 契约与前端 types.ts 对齐）。 */
 public sealed interface SqlResponses {
 
+  /** 审计终态（F-10）：由响应变体穷尽定义，调用方不得自行拼装状态串。 */
+  String auditStatus();
+
   /** 查询结果：列名 + 按列位置的行（零行保留列名），大整数与高精度小数以字符串保精度。 */
   record QueryResult(
       String kind,
@@ -18,6 +21,11 @@ public sealed interface SqlResponses {
       Long totalRows,
       Integer totalPages)
       implements SqlResponses {
+
+    @Override
+    public String auditStatus() {
+      return "SUCCEEDED";
+    }
 
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated) {
@@ -43,6 +51,11 @@ public sealed interface SqlResponses {
       String kind, Integer affectedRows, long elapsedMs, boolean uncommitted,
       boolean implicitCommitDdl) implements SqlResponses {
 
+    @Override
+    public String auditStatus() {
+      return "SUCCEEDED";
+    }
+
     public UpdateResult(Integer affectedRows, long elapsedMs, boolean uncommitted,
         boolean implicitCommitDdl) {
       this("UPDATE", affectedRows, elapsedMs, uncommitted, implicitCommitDdl);
@@ -53,6 +66,11 @@ public sealed interface SqlResponses {
   record ConfirmationRequired(
       String kind, String reason, boolean implicitCommitDdl, String confirmationToken)
       implements SqlResponses {
+
+    @Override
+    public String auditStatus() {
+      return "SUCCEEDED";
+    }
 
     public ConfirmationRequired(String reason, boolean implicitCommitDdl,
         String confirmationToken) {
@@ -66,6 +84,11 @@ public sealed interface SqlResponses {
     public UnknownOutcome(String message) {
       this("UNKNOWN_OUTCOME", message);
     }
+
+    @Override
+    public String auditStatus() {
+      return "UNKNOWN";
+    }
   }
 
   /** 查询已取消（F-14）：本会话取消成功后的查询终态，结果不保留。 */
@@ -73,6 +96,11 @@ public sealed interface SqlResponses {
 
     public Cancelled(long elapsedMs) {
       this("CANCELLED", elapsedMs);
+    }
+
+    @Override
+    public String auditStatus() {
+      return "CANCELLED";
     }
   }
 

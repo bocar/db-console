@@ -4,95 +4,66 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.config.DbConsoleProperties;
-import io.github.dbconsole.history.HistoryService;
-import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
 import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.transaction.TransactionManager;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.sql.SQLTimeoutException;
-import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 
-@ExtendWith(OutputCaptureExtension.class)
+/**
+ * SQL 执行编排测试：前置校验、确认分派、DESC 特例与审计包裹。
+ * 语句执行的不变式（连接归属、槽位释放、终态分类）见 {@link StatementExecutionTest}；
+ * 外部契约（HTTP 语义）见 SqlApiTest / SqlCancelApiTest / SqlPaginationApiTest。
+ */
 class SqlExecutionServiceTest {
 
   private static final String SESSION_TOKEN = "session-token";
   private static final String USERNAME = "admin";
   private static final String SOURCE_ID = "mysql-work-note";
 
-  private final ConnectionFactory connections = mock(ConnectionFactory.class);
   private final TransactionManager transactions = mock(TransactionManager.class);
   private final TableStructureService tableStructures = mock(TableStructureService.class);
-  private final HistoryService history = mock(HistoryService.class);
   private final AuditService audit = mock(AuditService.class);
-  private final Connection connection = mock(Connection.class);
-  private final Statement jdbcStatement = mock(Statement.class);
+  private final StatementExecution statementExecution = mock(StatementExecution.class);
 
   private SqlExecutionService executionService;
 
-  private ExecutorService executor;
-
   @BeforeEach
-  void setUp() throws Exception {
+  void setUp() {
     DbConsoleProperties properties = properties();
     DataSourceRegistry registry = new DataSourceRegistry(properties, ref -> "db-secret");
-    when(connections.open(any(ResolvedDataSource.class))).thenReturn(connection);
-    when(connection.createStatement()).thenReturn(jdbcStatement);
     executionService =
         new SqlExecutionService(
             registry,
             new ConfirmationService(),
-            connections,
             new RunningQueryRegistry(properties.execution().maxConcurrency()),
             transactions,
             tableStructures,
-            history,
             audit,
-            properties);
-    executor = Executors.newSingleThreadExecutor();
-  }
-
-  @AfterEach
-  void tearDown() {
-    executor.shutdownNow();
+            properties,
+            statementExecution);
   }
 
   @Test
   @DisplayName("写入执行成功记录操作者、SQL 指纹来源与 SUCCEEDED 状态")
-  void successfulWriteRecordsSucceededAudit() throws Exception {
+  void successfulWriteRecordsSucceededAudit() {
     String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
-    when(jdbcStatement.execute(sql)).thenReturn(false);
-    when(jdbcStatement.getUpdateCount()).thenReturn(1);
+    when(statementExecution.execute(any()))
+        .thenReturn(new SqlResponses.UpdateResult(1, 5L, false, false));
 
     SqlResponses response = executionService.execute(SESSION_TOKEN, USERNAME, request(sql));
 
@@ -133,11 +104,11 @@ class SqlExecutionServiceTest {
   }
 
   @Test
-  @DisplayName("自动提交连接打开失败记录 FAILED 审计且不标为结果未知")
-  void connectionOpenFailureRecordsFailedAudit() throws Exception {
+  @DisplayName("连接打开失败记录 FAILED 审计且不标为结果未知")
+  void connectionOpenFailureRecordsFailedAudit() {
     String sql = "SELECT 1";
-    when(connections.open(any(ResolvedDataSource.class)))
-        .thenThrow(new SQLException("connection refused", "08006"));
+    when(statementExecution.execute(any()))
+        .thenThrow(new IllegalStateException("连接打开失败：refused"));
 
     assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
         .isInstanceOf(IllegalStateException.class)
@@ -148,13 +119,11 @@ class SqlExecutionServiceTest {
   }
 
   @Test
-  @DisplayName("查询结果读取失败只记录一次 FAILED 审计")
-  void queryReadFailureRecordsSingleFailedAudit() throws Exception {
+  @DisplayName("执行失败只记录一次 FAILED 审计")
+  void executionFailureRecordsSingleFailedAudit() {
     String sql = "SELECT * FROM dbconsole_test_t";
-    ResultSet resultSet = mock(ResultSet.class);
-    when(jdbcStatement.execute(anyString())).thenReturn(true);
-    when(jdbcStatement.getResultSet()).thenReturn(resultSet);
-    when(resultSet.getMetaData()).thenThrow(new SQLException("read failed", "42000"));
+    when(statementExecution.execute(any()))
+        .thenThrow(new DatabaseExecutionException("read failed", null));
 
     assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
         .isInstanceOf(DatabaseExecutionException.class)
@@ -165,79 +134,10 @@ class SqlExecutionServiceTest {
   }
 
   @Test
-  @DisplayName("数据库执行失败时驱动错误消息回显的 SQL 与凭据不落应用日志")
-  void databaseFailureKeepsPlainTextSqlAndCredentialsOutOfLogs(CapturedOutput output)
-      throws Exception {
-    String marker = "log-sanitize-marker-42";
-    String sql = "SELECT * FROM dbconsole_test_t WHERE token = '" + marker + "'";
-    when(jdbcStatement.execute(anyString()))
-        .thenThrow(new SQLException(
-            "You have an error in your SQL syntax near '" + sql + "'", "42000"));
-
-    assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
-        .isInstanceOf(DatabaseExecutionException.class);
-
-    verify(audit).recordExecution(eq(USERNAME), eq(SOURCE_ID), eq(sql), anyLong(), eq("FAILED"));
-    assertThat(output).doesNotContain(marker).doesNotContain("db-secret");
-  }
-
-  @Test
-  @DisplayName("应用日志不记录完整 SQL、数据库凭据或结果数据")
-  void applicationLogsExcludeSensitiveData(CapturedOutput output) throws Exception {
-    String sql = "SELECT name FROM dbconsole_test_t WHERE name = 'sql-secret'";
-    ResultSet resultSet = mock(ResultSet.class);
-    ResultSetMetaData metadata = mock(ResultSetMetaData.class);
-    when(jdbcStatement.execute(anyString())).thenReturn(true);
-    when(jdbcStatement.getResultSet()).thenReturn(resultSet);
-    when(resultSet.getMetaData()).thenReturn(metadata);
-    when(metadata.getColumnCount()).thenReturn(1);
-    when(metadata.getColumnLabel(1)).thenReturn("name");
-    when(metadata.getColumnTypeName(1)).thenReturn("VARCHAR");
-    when(resultSet.next()).thenReturn(true, false);
-    when(resultSet.getObject(1)).thenReturn("result-secret");
-
-    SqlResponses response = executionService.execute(SESSION_TOKEN, USERNAME, request(sql));
-
-    assertThat(response).isInstanceOf(SqlResponses.QueryResult.class);
-    assertThat(output).doesNotContain(sql, "sql-secret", "db-secret", "result-secret");
-    verify(audit)
-        .recordExecution(eq(USERNAME), eq(SOURCE_ID), eq(sql), anyLong(), eq("SUCCEEDED"));
-  }
-
-  @Test
-  @DisplayName("语句关闭失败不改变已成功执行的审计状态或产生重复事件")
-  void statementCloseFailureKeepsSingleSucceededAudit() throws Exception {
-    String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
-    when(jdbcStatement.execute(sql)).thenReturn(false);
-    when(jdbcStatement.getUpdateCount()).thenReturn(1);
-    doThrow(new SQLException("close failed")).when(jdbcStatement).close();
-
-    SqlResponses response = executionService.execute(SESSION_TOKEN, USERNAME, request(sql));
-
-    assertThat(response).isInstanceOf(SqlResponses.UpdateResult.class);
-    verify(audit)
-        .recordExecution(eq(USERNAME), eq(SOURCE_ID), eq(sql), anyLong(), eq("SUCCEEDED"));
-    verifyNoMoreInteractions(audit);
-  }
-
-  @Test
-  @DisplayName("写入执行只记录一次历史（F-12）")
-  void updateExecutionRecordsHistoryOnce() throws Exception {
-    String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
-    when(jdbcStatement.execute(sql)).thenReturn(false);
-    when(jdbcStatement.getUpdateCount()).thenReturn(1);
-
-    executionService.execute(SESSION_TOKEN, USERNAME, request(sql));
-
-    verify(history, times(1))
-        .record(eq(SESSION_TOKEN), eq(SOURCE_ID), eq(sql), anyLong(), eq(true), eq(false));
-  }
-
-  @Test
   @DisplayName("写入超时且结果无法确认时记录 UNKNOWN 审计")
-  void writeTimeoutRecordsUnknownAudit() throws Exception {
+  void writeTimeoutRecordsUnknownAudit() {
     String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
-    when(jdbcStatement.execute(sql)).thenThrow(new SQLTimeoutException("timeout"));
+    when(statementExecution.execute(any())).thenReturn(new SqlResponses.UnknownOutcome("结果未知"));
 
     SqlResponses response = executionService.execute(SESSION_TOKEN, USERNAME, request(sql));
 
@@ -247,68 +147,10 @@ class SqlExecutionServiceTest {
   }
 
   @Test
-  @DisplayName("连接打开失败不占用并发槽位，后续执行不再被拒（F-10）")
-  void connectionOpenFailureReleasesConcurrencySlot() throws Exception {
-    when(connections.open(any(ResolvedDataSource.class)))
-        .thenThrow(new SQLException("connection refused", "08006"))
-        .thenReturn(connection);
-    String sql = "UPDATE dbconsole_test_t SET name = 'x' WHERE id = 1";
-    when(jdbcStatement.execute(sql)).thenReturn(false);
-    when(jdbcStatement.getUpdateCount()).thenReturn(1);
-
-    assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("连接打开失败");
-
-    assertThat(executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
-        .isInstanceOf(SqlResponses.UpdateResult.class);
-  }
-
-  @Test
-  @DisplayName("同一数据源执行并发超过上限时明确拒绝（F-10）")
-  void concurrencyBeyondLimitIsRejectedExplicitly() throws Exception {
-    stubEmptyResultRows();
-    CountDownLatch queryRunning = new CountDownLatch(1);
-    CountDownLatch releaseQuery = new CountDownLatch(1);
-    when(jdbcStatement.execute(anyString()))
-        .thenAnswer(
-            invocation -> {
-              queryRunning.countDown();
-              return releaseQuery.await(5, TimeUnit.SECONDS);
-            });
-    Future<SqlResponses> running =
-        executor.submit(() -> executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1")));
-    assertThat(queryRunning.await(2, TimeUnit.SECONDS)).isTrue();
-
-    assertThatThrownBy(
-            () -> executionService.execute("session-token-2", USERNAME, request("SELECT 2")))
-        .isInstanceOfSatisfying(
-            SqlRejectException.class,
-            rejected -> assertThat(rejected.code()).isEqualTo("CONCURRENCY_EXCEEDED"))
-        .hasMessageContaining("并发");
-
-    releaseQuery.countDown();
-    assertThat(running.get(5, TimeUnit.SECONDS)).isInstanceOf(SqlResponses.QueryResult.class);
-  }
-
-  @Test
-  @DisplayName("执行结束释放并发额度，后续执行不再被拒")
-  void concurrencySlotIsReleasedAfterExecutionCompletes() throws Exception {
-    stubEmptyResultRows();
-    when(jdbcStatement.execute(anyString())).thenReturn(true);
-
-    SqlResponses first = executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1"));
-    SqlResponses second = executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1"));
-
-    assertThat(first).isInstanceOf(SqlResponses.QueryResult.class);
-    assertThat(second).isInstanceOf(SqlResponses.QueryResult.class);
-  }
-
-  @Test
   @DisplayName("查询执行超时时明确反馈超时并记录 FAILED 审计")
-  void queryTimeoutIsReportedExplicitly() throws Exception {
+  void queryTimeoutIsReportedExplicitly() {
     String sql = "SELECT * FROM dbconsole_test_t";
-    when(jdbcStatement.execute(anyString())).thenThrow(new SQLTimeoutException("statement timed out"));
+    when(statementExecution.execute(any())).thenThrow(new QueryTimeoutException());
 
     assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
         .isInstanceOf(QueryTimeoutException.class)
@@ -318,15 +160,34 @@ class SqlExecutionServiceTest {
     verifyNoMoreInteractions(audit);
   }
 
-  private void stubEmptyResultRows() throws SQLException {
-    ResultSet resultSet = mock(ResultSet.class);
-    ResultSetMetaData metadata = mock(ResultSetMetaData.class);
-    when(jdbcStatement.getResultSet()).thenReturn(resultSet);
-    when(resultSet.getMetaData()).thenReturn(metadata);
-    when(metadata.getColumnCount()).thenReturn(1);
-    when(metadata.getColumnLabel(1)).thenReturn("id");
-    when(metadata.getColumnTypeName(1)).thenReturn("INT");
-    when(resultSet.next()).thenReturn(false);
+  @Test
+  @DisplayName("同一数据源执行并发超过上限时明确拒绝（F-10）")
+  void concurrencyBeyondLimitIsRejectedExplicitly() {
+    when(statementExecution.execute(any()))
+        .thenReturn(new SqlResponses.QueryResult(List.of(), List.of(), 0, false));
+
+    executionService.execute(SESSION_TOKEN, USERNAME, request("SELECT 1"));
+
+    assertThatThrownBy(
+            () -> executionService.execute("session-token-2", USERNAME, request("SELECT 2")))
+        .isInstanceOfSatisfying(
+            SqlRejectException.class,
+            rejected -> assertThat(rejected.code()).isEqualTo("CONCURRENCY_EXCEEDED"))
+        .hasMessageContaining("并发");
+  }
+
+  @Test
+  @DisplayName("有未提交事务时隐式提交 DDL 先于确认流程被拦截，且不落审计（F-16）")
+  void implicitCommitDdlWithOpenTransactionIsRejectedBeforeConfirmation() {
+    String sql = "DROP TABLE dbconsole_test_t";
+    when(transactions.connectionFor(SESSION_TOKEN, SOURCE_ID))
+        .thenReturn(mock(java.sql.Connection.class));
+
+    assertThatThrownBy(() -> executionService.execute(SESSION_TOKEN, USERNAME, request(sql)))
+        .isInstanceOf(io.github.dbconsole.transaction.TransactionStateException.class)
+        .hasMessageContaining("请先提交或回滚当前事务");
+
+    verifyNoInteractions(audit);
   }
 
   private static SqlRequest request(String sql) {

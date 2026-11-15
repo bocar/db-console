@@ -25,18 +25,27 @@ public class SqlConfig {
   }
 
   @Bean
+  public StatementExecution statementExecution(
+      ConnectionFactory connections,
+      TransactionManager transactions,
+      RunningQueryRegistry runningQueries,
+      HistoryService history,
+      DbConsoleProperties properties) {
+    return new StatementExecution(connections, transactions, runningQueries, history, properties);
+  }
+
+  @Bean
   public SqlExecutionService sqlExecutionService(
       DataSourceRegistry registry,
       ConfirmationService confirmations,
-      ConnectionFactory connections,
       RunningQueryRegistry runningQueries,
       TransactionManager transactions,
       TableStructureService tableStructures,
-      HistoryService history,
       AuditService audit,
-      DbConsoleProperties properties) {
+      DbConsoleProperties properties,
+      StatementExecution statementExecution) {
     return new SqlExecutionService(
-        registry, confirmations, connections, runningQueries, transactions, tableStructures,
-        history, audit, properties);
+        registry, confirmations, runningQueries, transactions, tableStructures, audit, properties,
+        statementExecution);
   }
 }

@@ -2,15 +2,11 @@ package io.github.dbconsole.sql;
 
 import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.config.DbConsoleProperties;
-import io.github.dbconsole.dialect.PaginationSql;
 import io.github.dbconsole.dialect.RejectedSql;
 import io.github.dbconsole.dialect.SqlAnalysisResult;
 import io.github.dbconsole.dialect.SqlStatement;
 import io.github.dbconsole.dialect.SqlStatementAnalyzer;
 import io.github.dbconsole.dialect.StatementKind;
-import io.github.dbconsole.history.HistoryService;
-import io.github.dbconsole.jdbc.ConnectionFactory;
-import io.github.dbconsole.jdbc.ConnectionFailureKind;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
@@ -18,56 +14,45 @@ import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
 import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.SQLTimeoutException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * SQL 执行编排（F-04/F-05）：方言分析 → 范围与确认分派 → JDBC 单语句执行。
- * 手动事务（F-16）由事务层接入前的语句均在自动提交连接上执行；
- * 需确认的操作必须携带与「会话 + 数据源 + SQL」绑定的确认凭据。
+ * SQL 执行编排（F-04/F-05）：方言分析 → 范围与确认分派 → 交由语句执行 module 运行。
+ * 连接归属、并发登记、终态分类与分页细节收口在 {@link StatementExecution}；
+ * 本类只保留前置校验、事务内隐式提交 DDL 拦截（F-16）、执行确认分派（F-09）、
+ * DESC 特例（F-06）与审计包裹（F-10）。
  */
 public class SqlExecutionService {
 
-  private static final Logger log = LoggerFactory.getLogger(SqlExecutionService.class);
-  private static final int DRIVER_MESSAGE_LIMIT = 500;
-
   private final DataSourceRegistry registry;
   private final ConfirmationService confirmations;
-  private final ConnectionFactory connections;
   private final RunningQueryRegistry runningQueries;
   private final TransactionManager transactions;
   private final TableStructureService tableStructures;
-  private final HistoryService history;
   private final AuditService audit;
   private final DbConsoleProperties properties;
+  private final StatementExecution statementExecution;
 
   public SqlExecutionService(
       DataSourceRegistry registry,
       ConfirmationService confirmations,
-      ConnectionFactory connections,
       RunningQueryRegistry runningQueries,
       TransactionManager transactions,
       TableStructureService tableStructures,
-      HistoryService history,
       AuditService audit,
-      DbConsoleProperties properties) {
+      DbConsoleProperties properties,
+      StatementExecution statementExecution) {
     this.registry = registry;
     this.confirmations = confirmations;
-    this.connections = connections;
     this.runningQueries = runningQueries;
     this.transactions = transactions;
     this.tableStructures = tableStructures;
-    this.history = history;
     this.audit = audit;
     this.properties = properties;
+    this.statementExecution = statementExecution;
   }
 
   public SqlResponses execute(String sessionToken, String username, SqlRequest request) {
@@ -99,9 +84,12 @@ public class SqlExecutionService {
     }
     if (statement.kind() == StatementKind.SELECT) {
       RunningQuery running = runningQueries.register(sessionToken, source.id());
-      return auditExecution(source, request.sql(), username,
-          () -> queryPage(source, request.sql(), 1, properties.execution().defaultPageSize(),
-              sessionToken, transactionConnection, true, analyzer, running));
+      return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
+          new StatementExecution.ExecutionRequest(
+              source, sessionToken, transactionConnection, running, statement,
+              request.sql(),
+              new StatementExecution.PageRequest(1, properties.execution().defaultPageSize()),
+              true)));
     }
     ConfirmationDecision.Requirement requirement =
         ConfirmationDecision.evaluate(source.environment(), statement);
@@ -117,8 +105,10 @@ public class SqlExecutionService {
       }
     }
     RunningQuery running = runningQueries.register(sessionToken, source.id());
-    return auditExecution(source, request.sql(), username,
-        () -> run(source, request.sql(), statement, sessionToken, transactionConnection, running));
+    return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
+        new StatementExecution.ExecutionRequest(
+            source, sessionToken, transactionConnection, running, statement,
+            request.sql(), null, true)));
   }
 
   /** 取消当前登录会话在本数据源运行中的查询（F-14）；其他会话的查询不可见。 */
@@ -147,11 +137,15 @@ public class SqlExecutionService {
     }
     Connection transactionConnection = transactions.connectionFor(sessionToken, source.id());
     RunningQuery running = runningQueries.register(sessionToken, source.id());
-    return auditExecution(source, request.sql(), username,
-        () -> queryPage(source, request.sql(), request.page(), request.pageSize(),
-            sessionToken, transactionConnection, false, analyzer, running));
+    return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
+        new StatementExecution.ExecutionRequest(
+            source, sessionToken, transactionConnection, running, statement,
+            request.sql(),
+            new StatementExecution.PageRequest(request.page(), request.pageSize()),
+            false)));
   }
 
+  /** 审计终态由响应变体穷尽定义（auditStatus），调用方不拼装状态串。 */
   private SqlResponses auditExecution(
       ResolvedDataSource source, String sql, String username,
       Supplier<SqlResponses> execution) {
@@ -163,16 +157,8 @@ public class SqlExecutionService {
       audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), "FAILED");
       throw exception;
     }
-    String status;
-    if (result instanceof SqlResponses.Cancelled) {
-      // 查询被本会话取消（F-14）：终态为 CANCELLED，不误记为 FAILED
-      status = "CANCELLED";
-    } else if (result instanceof SqlResponses.UnknownOutcome) {
-      status = "UNKNOWN";
-    } else {
-      status = "SUCCEEDED";
-    }
-    audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), status);
+    audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt),
+        result.auditStatus());
     return result;
   }
 
@@ -211,212 +197,5 @@ public class SqlExecutionService {
               column.comment()));
     }
     return new SqlResponses.QueryResult(columns, rows, 0, false);
-  }
-
-  private SqlResponses queryPage(
-      ResolvedDataSource source,
-      String sql,
-      int page,
-      int pageSize,
-      String sessionToken,
-      Connection transactionConnection,
-      boolean recordHistory,
-      SqlStatementAnalyzer analyzer,
-      RunningQuery running) {
-    long startedAt = System.nanoTime();
-    String statementSql = analyzer.removeTerminator(sql);
-    boolean inTransaction = transactionConnection != null;
-    // 打开连接在登记之后、try 之内：打开失败也必须经 finally 释放并发槽位（F-10）
-    Connection connection = null;
-    SqlResponses.QueryResult result = null;
-    try {
-      connection = inTransaction ? transactionConnection : openAutoCommit(source);
-      long offset = ((long) page - 1) * pageSize;
-      String baseSql = analyzer.requiresDerivedTableForPagination(statementSql)
-          ? PaginationSql.derivedTableWrap(statementSql)
-          : statementSql;
-      String pagedSql = PaginationSql.appendPageClause(baseSql, pageSize + 1, offset);
-      try (Statement jdbcStatement = connection.createStatement()) {
-        running.attach(jdbcStatement);
-        jdbcStatement.setQueryTimeout(timeoutSeconds());
-        if (!jdbcStatement.execute(pagedSql)) {
-          throw new SQLException("查询未返回结果集");
-        }
-        long elapsedMs = elapsedMillisSince(startedAt);
-        log.info("SQL 执行完成 sourceId={} kind={} elapsedMs={}",
-            source.id(), StatementKind.SELECT, elapsedMs);
-        if (recordHistory) {
-          history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
-        }
-        SqlResponses.QueryResult pageResult;
-        try (ResultSet resultSet = jdbcStatement.getResultSet()) {
-          pageResult =
-              QueryResultMapper.map(resultSet, properties.execution(), elapsedMs, pageSize);
-        }
-        result = new SqlResponses.QueryResult(pageResult.columns(), pageResult.rows(), elapsedMs,
-            pageResult.truncated(), page, pageSize, Boolean.TRUE.equals(pageResult.hasNextPage()),
-            null, null);
-      }
-      Long totalRows = countTotalRows(connection, source.id(), statementSql);
-      if (totalRows != null) {
-        int totalPages = (int) (totalRows / pageSize + (totalRows % pageSize == 0 ? 0 : 1));
-        result = new SqlResponses.QueryResult(result.columns(), result.rows(), result.elapsedMs(),
-            result.truncated(), page, pageSize, result.hasNextPage(), totalRows, totalPages);
-      }
-    } catch (SQLException exception) {
-      if (result != null) {
-        log.warn("JDBC 语句关闭失败 sourceId={} kind={} sqlState={}",
-            source.id(), StatementKind.SELECT, exception.getSQLState());
-        return result;
-      }
-      long elapsedMs = elapsedMillisSince(startedAt);
-      if (running.isCancelRequested()) {
-        log.info("查询已取消 sourceId={} elapsedMs={}", source.id(), elapsedMs);
-        return new SqlResponses.Cancelled(elapsedMs);
-      }
-      if (exception instanceof SQLTimeoutException) {
-        log.warn("查询执行超时 sourceId={} sqlState={} elapsedMs={}",
-            source.id(), exception.getSQLState(), elapsedMs);
-        throw new QueryTimeoutException();
-      }
-      log.warn("SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
-          source.id(), StatementKind.SELECT, exception.getSQLState(), elapsedMs);
-      throw new DatabaseExecutionException(safeMessage(exception), exception);
-    } finally {
-      runningQueries.complete(running);
-      if (inTransaction) {
-        transactions.touch(sessionToken);
-      } else if (connection != null) {
-        try {
-          connection.close();
-        } catch (SQLException closeFailure) {
-          // 关闭失败不影响执行结果
-        }
-      }
-    }
-    return result;
-  }
-
-  /** 总行数统计（F-11）：COUNT 包装无法安全执行时降级为总数未知。 */
-  private Long countTotalRows(Connection connection, String sourceId, String sql) {
-    try (Statement countStatement = connection.createStatement()) {
-      countStatement.setQueryTimeout(timeoutSeconds());
-      if (!countStatement.execute(PaginationSql.countSql(sql))) {
-        return null;
-      }
-      try (ResultSet countResult = countStatement.getResultSet()) {
-        return countResult.next() ? countResult.getLong(1) : null;
-      }
-    } catch (SQLException exception) {
-      log.info("总数统计不可用 sourceId={} sqlState={}", sourceId, exception.getSQLState());
-      return null;
-    }
-  }
-
-  private SqlResponses run(
-      ResolvedDataSource source,
-      String sql,
-      SqlStatement statement,
-      String sessionToken,
-      Connection transactionConnection,
-      RunningQuery running) {
-    long startedAt = System.nanoTime();
-    boolean inTransaction = transactionConnection != null;
-    // 打开连接在登记之后、try 之内：打开失败也必须经 finally 释放并发槽位（F-10）
-    Connection connection = null;
-    SqlResponses result = null;
-    try {
-      connection = inTransaction ? transactionConnection : openAutoCommit(source);
-      try (Statement jdbcStatement = connection.createStatement()) {
-        running.attach(jdbcStatement);
-        jdbcStatement.setQueryTimeout(timeoutSeconds());
-        boolean isResultSet = jdbcStatement.execute(sql);
-        long elapsedMs = elapsedMillisSince(startedAt);
-        log.info(
-            "SQL 执行完成 sourceId={} kind={} elapsedMs={}",
-            source.id(),
-            statement.kind(),
-            elapsedMs);
-        history.record(sessionToken, source.id(), sql, elapsedMs, true, inTransaction);
-        if (isResultSet) {
-          SqlResponses.QueryResult queryResult;
-          try (ResultSet resultSet = jdbcStatement.getResultSet()) {
-            queryResult = QueryResultMapper.map(resultSet, properties.execution(), elapsedMs);
-          }
-          result = queryResult;
-        } else {
-          int rawCount = jdbcStatement.getUpdateCount();
-          // DDL 与驱动未提供行数（-1）统一为 null，前端显示「驱动未提供行数」
-          Integer affectedRows =
-              statement.kind().isImplicitCommitDdl() || rawCount < 0 ? null : rawCount;
-          result = new SqlResponses.UpdateResult(affectedRows, elapsedMs, inTransaction,
-              statement.kind().isImplicitCommitDdl());
-        }
-      }
-    } catch (SQLException exception) {
-      if (result != null) {
-        log.warn("JDBC 语句关闭失败 sourceId={} kind={} sqlState={}",
-            source.id(), statement.kind(), exception.getSQLState());
-        return result;
-      }
-      long elapsedMs = elapsedMillisSince(startedAt);
-      if (running.isCancelRequested()) {
-        // 被取消的写入（F-14）与超时同等对待：提交状态无法确认，执行结果未知
-        log.warn("写入执行被取消，结果未知 sourceId={} kind={} elapsedMs={}",
-            source.id(), statement.kind(), elapsedMs);
-        return new SqlResponses.UnknownOutcome("执行已被取消，写入结果未知，请核实数据库状态");
-      }
-      boolean writeStatement = statement.kind().isWrite() || statement.kind().isImplicitCommitDdl();
-      ConnectionFailureKind failureKind = ConnectionFailureKind.classify(exception);
-      if (writeStatement && failureKind.isOutcomeUnknown()) {
-        log.warn(
-            "执行结果未知 sourceId={} kind={} sqlState={} elapsedMs={}",
-            source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
-        return new SqlResponses.UnknownOutcome(safeMessage(exception));
-      }
-      log.warn(
-          "SQL 执行失败 sourceId={} kind={} sqlState={} elapsedMs={}",
-          source.id(), statement.kind(), exception.getSQLState(), elapsedMs);
-      throw new DatabaseExecutionException(safeMessage(exception), exception);
-    } finally {
-      runningQueries.complete(running);
-      if (inTransaction) {
-        transactions.touch(sessionToken);
-      } else if (connection != null) {
-        try {
-          connection.close();
-        } catch (SQLException closeFailure) {
-          // 关闭失败不影响执行结果
-        }
-      }
-    }
-    return result;
-  }
-
-  /** 查询超时秒数：配置不足 1 秒按 1 秒兜底。 */
-  private int timeoutSeconds() {
-    return Math.max(1, (int) properties.execution().timeout().toSeconds());
-  }
-
-  private Connection openAutoCommit(ResolvedDataSource source) {
-    try {
-      Connection connection = connections.open(source);
-      connection.setAutoCommit(true);
-      return connection;
-    } catch (SQLException exception) {
-      throw new IllegalStateException(
-          "连接打开失败：" + exception.getMessage(), exception);
-    }
-  }
-
-  /** 驱动消息面向用户可定位并截断防护；凭据不出现在驱动错误消息中。 */
-  private static String safeMessage(SQLException exception) {
-    String message = exception.getMessage();
-    if (message == null || message.isBlank()) {
-      return "数据库执行失败，原因未知";
-    }
-    return message.length() > DRIVER_MESSAGE_LIMIT
-        ? message.substring(0, DRIVER_MESSAGE_LIMIT) + "…"
-        : message;
   }
 }

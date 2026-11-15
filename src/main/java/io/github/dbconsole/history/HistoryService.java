@@ -29,15 +29,14 @@ public class HistoryService {
     this.clock = clock;
   }
 
-  /** 记录一条已执行的 SQL。 */
+  /** 记录一条已执行的 SQL（失败路径在记录前已抛出，故仅存在成功终态）。 */
   public void record(String sessionToken, String sourceId, String sql, long durationMs,
-      boolean succeeded, boolean uncommitted) {
+      boolean uncommitted) {
     historyBySession
         .computeIfAbsent(sessionToken, k -> new ConcurrentHashMap<>())
         .computeIfAbsent(sourceId, k -> new LinkedList<>())
         .addFirst(new HistoryEntry(idGenerator.incrementAndGet(), sourceId, sql,
-            clock.instant().toString(), durationMs,
-            succeeded ? "SUCCEEDED" : "FAILED", uncommitted));
+            clock.instant().toString(), durationMs, "SUCCEEDED", uncommitted));
     trim(sessionToken, sourceId);
   }
 
