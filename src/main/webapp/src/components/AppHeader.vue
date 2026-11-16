@@ -4,18 +4,24 @@ import { Check, ChevronDown, Database, LogOut, Menu, PlugZap, Server } from 'luc
 import type { DataSourceInfo } from '../types'
 import { displayDatabaseType, displayEnvironment, environmentBadgeClass } from '../display'
 
-const props = defineProps<{
-  sources: DataSourceInfo[]
-  selectedSourceId: string
-  username: string
-  testing: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    sources: DataSourceInfo[]
+    selectedSourceId: string
+    username: string
+    testing: boolean
+    activeView?: 'workspace' | 'script'
+    sidebarToggle?: boolean
+  }>(),
+  { activeView: 'workspace', sidebarToggle: true },
+)
 
 const emit = defineEmits<{
   changeSource: [id: string]
   testConnection: []
   logout: []
   toggleSidebar: []
+  switchView: [view: 'workspace' | 'script']
 }>()
 
 const selectedSource = computed(() => props.sources.find((source) => source.id === props.selectedSourceId) ?? props.sources[0])
@@ -40,7 +46,20 @@ const changeSource = (event: Event) => {
         <span>db-console</span>
       </div>
       <nav class="app-nav" aria-label="主导航">
-        <button type="button" class="nav-item active" aria-current="page">SQL 工作台</button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: props.activeView === 'workspace' }"
+          :aria-current="props.activeView === 'workspace' ? 'page' : undefined"
+          @click="emit('switchView', 'workspace')"
+        >SQL 工作台</button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: props.activeView === 'script' }"
+          :aria-current="props.activeView === 'script' ? 'page' : undefined"
+          @click="emit('switchView', 'script')"
+        >脚本执行</button>
       </nav>
       <div class="app-actions">
         <span class="user-avatar" aria-hidden="true">{{ initials }}</span>
@@ -52,7 +71,7 @@ const changeSource = (event: Event) => {
       </div>
     </div>
     <div class="source-bar">
-      <button type="button" class="icon-button mobile-menu" aria-label="打开对象资源管理器" @click="emit('toggleSidebar')"><Menu :size="19" /></button>
+      <button v-if="props.sidebarToggle" type="button" class="icon-button mobile-menu" aria-label="打开对象资源管理器" @click="emit('toggleSidebar')"><Menu :size="19" /></button>
       <Server :size="16" class="source-icon" aria-hidden="true" />
       <label for="datasource-select" class="source-label">数据源</label>
       <div class="source-select-wrap">

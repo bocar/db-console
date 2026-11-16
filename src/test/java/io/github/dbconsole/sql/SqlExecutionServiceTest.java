@@ -23,6 +23,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * SQL 执行编排测试：前置校验、确认分派、DESC 特例与审计包裹。
@@ -190,6 +191,56 @@ class SqlExecutionServiceTest {
     verifyNoInteractions(audit);
   }
 
+  @Test
+  @DisplayName("脚本单语句执行传 recordHistory=false 且走不分页路径（F-13 汇总历史由专用端点记录）")
+  void scriptStatementExecutesWithoutHistoryAndWithoutPaging() {
+    String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
+    when(statementExecution.execute(any()))
+        .thenReturn(new SqlResponses.UpdateResult(1, 5L, false, false));
+
+    executionService.executeScriptStatement(SESSION_TOKEN, USERNAME, request(sql));
+
+    ArgumentCaptor<StatementExecution.ExecutionRequest> captor =
+        ArgumentCaptor.forClass(StatementExecution.ExecutionRequest.class);
+    verify(statementExecution).execute(captor.capture());
+    StatementExecution.ExecutionRequest captured = captor.getValue();
+    assertThat(captured.page()).isNull();
+    assertThat(captured.recordHistory()).isFalse();
+    assertThat(captured.transactionConnection()).isNull();
+  }
+
+  @Test
+  @DisplayName("脚本单语句 SELECT 同样走不分页路径")
+  void scriptSelectExecutesNonPaged() {
+    String sql = "SELECT * FROM dbconsole_test_t";
+    when(statementExecution.execute(any()))
+        .thenReturn(new SqlResponses.QueryResult(List.of(), List.of(), 0, false));
+
+    executionService.executeScriptStatement(SESSION_TOKEN, USERNAME, request(sql));
+
+    ArgumentCaptor<StatementExecution.ExecutionRequest> captor =
+        ArgumentCaptor.forClass(StatementExecution.ExecutionRequest.class);
+    verify(statementExecution).execute(captor.capture());
+    assertThat(captor.getValue().page()).isNull();
+    assertThat(captor.getValue().recordHistory()).isFalse();
+  }
+
+  @Test
+  @DisplayName("存在未提交手动事务时脚本单语句执行被拒绝，不进入执行与审计（F-16 互斥）")
+  void scriptStatementRejectsOpenTransaction() {
+    String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
+    when(transactions.connectionFor(SESSION_TOKEN, SOURCE_ID))
+        .thenReturn(mock(java.sql.Connection.class));
+
+    assertThatThrownBy(
+            () -> executionService.executeScriptStatement(SESSION_TOKEN, USERNAME, request(sql)))
+        .isInstanceOf(io.github.dbconsole.transaction.TransactionStateException.class)
+        .hasMessageContaining("请先提交或回滚当前事务");
+
+    verifyNoInteractions(audit);
+    verifyNoInteractions(statementExecution);
+  }
+
   private static SqlRequest request(String sql) {
     return new SqlRequest(SOURCE_ID, sql, null);
   }
@@ -212,6 +263,7 @@ class SqlExecutionServiceTest {
             Duration.ofSeconds(30), 20_000, 1, 100, 1_000, 65_536, 10_485_760),
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./target/test-audit", Duration.ofDays(30)),
+        null,
         List.of(source));
   }
 }

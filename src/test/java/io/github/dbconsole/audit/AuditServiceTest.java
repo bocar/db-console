@@ -125,6 +125,7 @@ class AuditServiceTest {
                 Duration.ofSeconds(30), 20_000, 4, 100, 1_000, 65_536, 10_485_760),
             new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
             new DbConsoleProperties.AuditProperties(directory.toString(), retention),
+            null,
             List.of());
     return new AuditService(properties, clock, mapper);
   }

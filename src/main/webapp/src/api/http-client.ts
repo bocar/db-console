@@ -8,9 +8,11 @@ import type {
   ExecutionOutcome,
   HistoryEntry,
   QueryResult,
+  ScriptAnalyzeResult,
   SessionInfo,
   TableDefinition,
   TransactionStatus,
+  UnknownOutcome,
 } from '../types'
 
 /** 错误码单一来源：镜像后端 ApiError.code，新增码需同步（手写 wire 契约，ADR-0003）。 */
@@ -31,6 +33,10 @@ const API_ERROR_CODES = [
   'DATABASE_ERROR',
   'INVALID_PAGE_SIZE',
   'PAGINATION_NOT_ALLOWED',
+  'SCRIPT_FILE_TYPE',
+  'SCRIPT_TOO_LARGE',
+  'SCRIPT_TOO_MANY_STATEMENTS',
+  'SCRIPT_RUN_NOT_FOUND',
 ] as const
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number]
@@ -151,6 +157,32 @@ export class HttpApiClient implements ApiClient {
       }),
     cancel: (sourceId: string): Promise<CancelOutcome> =>
       this.request<CancelOutcome>('POST', `/api/sql/${encodeURIComponent(sourceId)}/cancel`),
+  }
+
+  script = {
+    analyze: (sourceId: string, filename: string, content: string): Promise<ScriptAnalyzeResult> =>
+      this.request<ScriptAnalyzeResult>('POST', '/api/sql/script/analyze', {
+        sourceId,
+        filename,
+        content,
+      }),
+    executeStatement: (
+      sourceId: string,
+      sql: string,
+      confirmationToken?: string,
+    ): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome> =>
+      this.request<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>(
+        'POST', '/api/sql/script/execute', { sourceId, sql, confirmationToken }),
+    recordRun: (
+      sourceId: string,
+      scriptId: string,
+      durationMs: number,
+    ): Promise<void> =>
+      this.request<void>('POST', '/api/sql/script/history', {
+        sourceId,
+        scriptId,
+        durationMs,
+      }),
   }
 
   transaction = {

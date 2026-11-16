@@ -18,6 +18,9 @@ db-console:
     max-result-bytes: 10485760
   transaction:
     idle-timeout: PT10M
+  script:
+    max-file-bytes: 5242880
+    max-statements: 1000
   audit:
     directory: ./audit
     retention: P30D

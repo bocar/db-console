@@ -10,9 +10,14 @@ import type {
   QueryColumn,
   QueryResult,
   QueryRow,
+  ScriptAnalyzeResult,
+  ScriptStatementError,
+  ScriptStatementPlan,
   SessionInfo,
+  StatementKind,
   TableDefinition,
   TransactionStatus,
+  UnknownOutcome,
 } from '../types'
 
 /**
@@ -28,6 +33,7 @@ export class MockApiClient implements ApiClient {
   private loggedIn = false
   private historyEntries: HistoryEntry[] = []
   private transactionPendingBySource = new Map<string, boolean>()
+  private scriptRuns = new Map<string, { sourceId: string; filename: string; content: string }>()
   private pendingExecution: (() => void) | null = null
 
   /** delayMs 可注入：测试传 0 以免等待。 */
@@ -154,7 +160,7 @@ export class MockApiClient implements ApiClient {
         const timer = setTimeout(() => {
           this.pendingExecution = null
           try {
-            resolve(this.resolveExecution(sourceId, sql, confirmationToken))
+            resolve(this.resolveExecution(sourceId, sql, confirmationToken, true))
           } catch (error) {
             reject(error instanceof Error ? error : new Error('执行失败'))
           }
@@ -180,6 +186,84 @@ export class MockApiClient implements ApiClient {
         return { kind: 'CANCELLED' }
       }
       return { kind: 'COMPLETED' }
+    },
+  }
+
+  script = {
+    // 拆分语义说明：mock 用朴素分号切分近似预校验（前端无方言词法器，ADR-0001 的
+    // 边界规则只在真实后端存在）；依赖 mock 断言「字符串内分号不切分」等拆分语义是无效测试
+    analyze: async (sourceId: string, filename: string, content: string): Promise<ScriptAnalyzeResult> => {
+      this.requireSource(sourceId)
+      if (!/\.(sql|txt)$/i.test(filename.trim())) {
+        throw new ApiClientError('SCRIPT_FILE_TYPE', '仅支持 .sql 或 .txt 脚本文件', 422)
+      }
+      const statements = content
+        .split(';')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0 && !/^(--|#|\/\*)/.test(part))
+      const plans: ScriptStatementPlan[] = []
+      const errors: ScriptStatementError[] = []
+      statements.forEach((sql, position) => {
+        const kind = this.statementKind(sql)
+        if (kind === 'OTHER') {
+          errors.push({
+            index: position + 1,
+            sql,
+            code: 'OUT_OF_SCOPE',
+            message: `第 ${position + 1} 条语句超出允许的操作范围`,
+          })
+          return
+        }
+        const reason = this.confirmationReason(sourceId, sql, kind)
+        plans.push({
+          index: position + 1,
+          sql,
+          kind,
+          confirmationReason: reason,
+          implicitCommitDdl: MockApiClient.DDL_KINDS.has(kind),
+          confirmationToken: reason ? `mock-token-${MockApiClient.nextId++}` : null,
+        })
+      })
+      const valid = errors.length === 0
+      const scriptId = valid ? `mock-script-${MockApiClient.nextId++}` : null
+      if (scriptId) {
+        this.scriptRuns.set(scriptId, { sourceId, filename, content })
+      }
+      return { sourceId, filename, scriptId, valid, statements: plans, errors }
+    },
+    executeStatement: async (
+      sourceId: string,
+      sql: string,
+      confirmationToken?: string,
+    ): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome> => {
+      await this.delay(this.delayMs === 0 ? 0 : 60)
+      return this.resolveExecution(sourceId, sql, confirmationToken, false)
+    },
+    recordRun: async (
+      sourceId: string,
+      scriptId: string,
+      durationMs: number,
+    ): Promise<void> => {
+      this.requireSource(sourceId)
+      const stored = this.scriptRuns.get(scriptId)
+      if (!stored || stored.sourceId !== sourceId) {
+        throw new ApiClientError('SCRIPT_RUN_NOT_FOUND', '脚本运行不存在或已失效，请重新上传后再执行', 422)
+      }
+      this.scriptRuns.delete(scriptId)
+      this.historyEntries = [
+        {
+          id: MockApiClient.nextId++,
+          sourceId,
+          sql: stored.content,
+          executedAt: new Date().toISOString(),
+          durationMs,
+          status: 'SUCCEEDED',
+          uncommitted: false,
+          filename: stored.filename,
+          kind: 'SCRIPT',
+        },
+        ...this.historyEntries,
+      ]
     },
   }
 
@@ -261,51 +345,92 @@ export class MockApiClient implements ApiClient {
     }
   }
 
+  private static readonly DDL_KINDS: ReadonlySet<StatementKind> = new Set([
+    'CREATE_TABLE',
+    'ALTER_TABLE',
+    'DROP_TABLE',
+    'COMMENT_ON',
+  ])
+
+  private static readonly WRITE_KINDS: ReadonlySet<StatementKind> = new Set([
+    'INSERT',
+    'UPDATE',
+    'DELETE',
+  ])
+
   private resolveExecution(
     sourceId: string,
     sql: string,
-    confirmationToken?: string,
+    confirmationToken: string | undefined,
+    recordHistory: boolean,
   ): ExecutionOutcome | ConfirmationRequired {
     const statement = sql.trim()
-    const source = this.availableSources.find((item) => item.id === sourceId) ?? this.availableSources[0]
-    const isDdl = /^(create|alter|drop|comment)\b/i.test(statement)
-    const isWrite = /^(insert|update|delete)\b/i.test(statement)
-    const missingWhere = /^(update|delete)\b/i.test(statement) && !/\bwhere\b/i.test(statement)
+    const kind = this.statementKind(statement)
+    const reason = this.confirmationReason(sourceId, statement, kind)
 
-    if (isDdl && this.isTransactionPending(sourceId)) {
+    if (MockApiClient.DDL_KINDS.has(kind) && this.isTransactionPending(sourceId)) {
       throw new ApiClientError('TRANSACTION_OPEN', '请先提交或回滚当前事务，再执行隐式提交 DDL。', 409)
     }
-    const requiresConfirmation = isDdl || (source.environment === 'PRODUCTION' && isWrite) || missingWhere
-    if (requiresConfirmation && !confirmationToken) {
+    if (reason && !confirmationToken) {
       const confirmation: ConfirmationRequired = {
         kind: 'CONFIRMATION_REQUIRED',
-        reason: isDdl ? 'IMPLICIT_COMMIT_DDL' : source.environment === 'PRODUCTION' ? 'PRODUCTION_WRITE' : 'MISSING_WHERE',
-        implicitCommitDdl: isDdl,
+        reason,
+        implicitCommitDdl: MockApiClient.DDL_KINDS.has(kind),
         confirmationToken: `mock-token-${MockApiClient.nextId++}`,
       }
       return confirmation
     }
 
     const elapsedMs = statement.length % 70 + 34
-    this.historyEntries = [
-      {
-        id: MockApiClient.nextId++,
-        sourceId,
-        sql: statement,
-        executedAt: new Date().toISOString(),
-        durationMs: elapsedMs,
-        status: 'SUCCEEDED',
-        uncommitted: isWrite,
-      },
-      ...this.historyEntries,
-    ]
-    if (isDdl) {
+    if (recordHistory) {
+      this.historyEntries = [
+        {
+          id: MockApiClient.nextId++,
+          sourceId,
+          sql: statement,
+          executedAt: new Date().toISOString(),
+          durationMs: elapsedMs,
+          status: 'SUCCEEDED',
+          uncommitted: MockApiClient.WRITE_KINDS.has(kind),
+          kind: 'SQL',
+        },
+        ...this.historyEntries,
+      ]
+    }
+    if (MockApiClient.DDL_KINDS.has(kind)) {
       return { kind: 'UPDATE', affectedRows: null, elapsedMs, uncommitted: false, implicitCommitDdl: true }
     }
-    if (isWrite) {
+    if (MockApiClient.WRITE_KINDS.has(kind)) {
       this.transactionPendingBySource.set(sourceId, true)
       return { kind: 'UPDATE', affectedRows: 1, elapsedMs, uncommitted: true, implicitCommitDdl: false }
     }
     return this.queryResult(1, 100)
+  }
+
+  /** Mock 专用：按首动词粗分类语句类别；预校验与执行两侧共用此单一分类。 */
+  private statementKind(sql: string): StatementKind {
+    const KIND_BY_VERB: Record<string, StatementKind> = {
+      SELECT: 'SELECT',
+      INSERT: 'INSERT',
+      UPDATE: 'UPDATE',
+      DELETE: 'DELETE',
+      CREATE: 'CREATE_TABLE',
+      ALTER: 'ALTER_TABLE',
+      DROP: 'DROP_TABLE',
+      COMMENT: 'COMMENT_ON',
+    }
+    const verb = sql.trim().split(/\s+/)[0]?.toUpperCase() ?? ''
+    return KIND_BY_VERB[verb] ?? 'OTHER'
+  }
+
+  /** Mock 专用：确认原因粗判（镜像后端 ConfirmationDecision.evaluate）；预校验与执行两侧的单一规则来源。 */
+  private confirmationReason(sourceId: string, sql: string, kind: StatementKind): ConfirmationRequired['reason'] | null {
+    const source = this.availableSources.find((item) => item.id === sourceId)
+    if (MockApiClient.DDL_KINDS.has(kind)) return 'IMPLICIT_COMMIT_DDL'
+    if (MockApiClient.WRITE_KINDS.has(kind)) {
+      if (source?.environment === 'PRODUCTION') return 'PRODUCTION_WRITE'
+      if ((kind === 'UPDATE' || kind === 'DELETE') && !/\bwhere\b/i.test(sql)) return 'MISSING_WHERE'
+    }
+    return null
   }
 }

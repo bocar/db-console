@@ -123,7 +123,7 @@ export interface TransactionStatus {
   sourceId: string | null
 }
 
-/** 会话内历史（wire）：执行状态与事务状态分离。 */
+/** 会话内历史（wire）：执行状态与事务状态分离。kind 区分普通语句与脚本汇总；filename 仅脚本汇总携带。 */
 export interface HistoryEntry {
   id: number
   sourceId: string
@@ -132,4 +132,68 @@ export interface HistoryEntry {
   durationMs: number
   status: 'SUCCEEDED' | 'FAILED'
   uncommitted: boolean
+  filename?: string | null
+  kind: 'SQL' | 'SCRIPT'
+}
+
+/** 语句操作类别，镜像后端 StatementKind。 */
+export type StatementKind =
+  | 'SELECT'
+  | 'INSERT'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'DESCRIBE'
+  | 'CREATE_TABLE'
+  | 'ALTER_TABLE'
+  | 'DROP_TABLE'
+  | 'COMMENT_ON'
+  | 'OTHER'
+
+/** 脚本预校验通过的单条语句计划：凭据绑定会话、数据源与语句文本（F-13）。 */
+export interface ScriptStatementPlan {
+  index: number
+  sql: string
+  kind: StatementKind
+  confirmationReason: ConfirmationRequired['reason'] | null
+  implicitCommitDdl: boolean
+  confirmationToken: string | null
+}
+
+/** 脚本预校验未通过的单条语句：逐条报告序号与原因（F-13）。 */
+export interface ScriptStatementError {
+  index: number
+  sql: string
+  code: string
+  message: string
+}
+
+/** 脚本预校验响应：valid=false 时整份脚本不执行且无运行标识。 */
+export interface ScriptAnalyzeResult {
+  sourceId: string
+  filename: string
+  /** 运行标识：汇总历史端点据其取回文件名与全文（服务端暂存），valid=false 时为 null。 */
+  scriptId: string | null
+  valid: boolean
+  statements: ScriptStatementPlan[]
+  errors: ScriptStatementError[]
+}
+
+/** 脚本语句运行状态：SKIPPED 为停止后未执行的语句。 */
+export type ScriptStatementStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'UNKNOWN_OUTCOME'
+  | 'SKIPPED'
+
+/** 脚本逐条结果（F-13）：状态、耗时、影响行数与查询结果。 */
+export interface ScriptStatementState {
+  plan: ScriptStatementPlan
+  status: ScriptStatementStatus
+  elapsedMs: number | null
+  affectedRows: number | null
+  queryResult: QueryResult | null
+  message: string
 }

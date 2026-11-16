@@ -43,9 +43,11 @@ defineExpose({ open })
           <span><Clock3 :size="12" />{{ formatClockTime(entry.executedAt) }}</span>
           <span>{{ formatDuration(entry.durationMs) }}</span>
           <span class="history-status" :class="{ pending: entry.uncommitted, failed: entry.status === 'FAILED' }">{{ displayHistoryStatus(entry) }}</span>
+          <span v-if="entry.filename" class="history-filename">脚本 · {{ entry.filename }}</span>
         </div>
         <pre class="mono">{{ entry.sql }}</pre>
-        <button type="button" class="load-history" @click="load(entry.sql)">载入编辑器</button>
+        <button v-if="entry.kind === 'SQL'" type="button" class="load-history" @click="load(entry.sql)">载入编辑器</button>
+        <span v-else class="script-entry-hint">脚本汇总记录不回灌编辑器，请在「脚本执行」页重新上传</span>
       </article>
       <div v-if="filteredEntries.length === 0" class="history-empty">
         <History :size="28" />
@@ -194,6 +196,15 @@ defineExpose({ open })
   background: transparent;
   font-size: 11px;
   font-weight: 550;
+}
+
+.history-filename {
+  color: var(--accent);
+}
+
+.script-entry-hint {
+  color: var(--faint);
+  font-size: 11px;
 }
 
 .history-empty {

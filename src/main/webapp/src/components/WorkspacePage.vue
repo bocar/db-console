@@ -7,6 +7,7 @@ import HistoryDialog from './HistoryDialog.vue'
 import ObjectExplorer from './ObjectExplorer.vue'
 import ResultPanel from './ResultPanel.vue'
 import SqlEditor from './SqlEditor.vue'
+import ToastMessage from './ToastMessage.vue'
 import { confirmationReasonText, displayDatabaseType, displayEnvironment, environmentBadgeClass } from '../display'
 import { quoteIdentifier, selectTopStatement } from '../dialect'
 import { useDataSources } from '../composables/useDataSources'
@@ -27,7 +28,7 @@ interface EditorHandle {
 interface ConfirmHandle { open: () => void }
 interface HistoryHandle { open: () => void }
 
-const emit = defineEmits<{ logout: [] }>()
+const emit = defineEmits<{ logout: []; switchView: [view: 'workspace' | 'script'] }>()
 
 const { username } = useSession()
 const { notify, message: toastMessage } = useToast()
@@ -213,6 +214,7 @@ onUnmounted(() => {
       @test-connection="dataSources.testConnection()"
       @logout="emit('logout')"
       @toggle-sidebar="mobileSidebarOpen = !mobileSidebarOpen"
+      @switch-view="emit('switchView', $event)"
     />
     <div class="workspace-body">
       <button v-if="mobileSidebarOpen" type="button" class="sidebar-scrim" aria-label="关闭对象资源管理器" @click="mobileSidebarOpen = false"></button>
@@ -334,7 +336,7 @@ onUnmounted(() => {
       @cancel="cancelExecution"
     />
     <HistoryDialog ref="historyDialog" :entries="currentHistory" :source-name="selectedSource?.displayName ?? ''" @load="loadHistoryEntry" @clear="clearHistory" />
-    <div v-if="toastMessage" class="toast-message" role="status"><Check :size="16" />{{ toastMessage }}</div>
+    <ToastMessage :message="toastMessage" />
   </div>
 </template>
 
@@ -651,25 +653,6 @@ onUnmounted(() => {
 
 .status-right {
   margin-inline-start: auto;
-}
-
-.toast-message {
-  position: fixed;
-  z-index: 100;
-  inset-inline-end: 22px;
-  inset-block-end: 43px;
-  max-inline-size: min(440px, calc(100% - 32px));
-  min-block-size: 42px;
-  padding: 10px 15px;
-  border: 1px solid #b9d4c8;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #275c45;
-  background: #f2faf5;
-  box-shadow: 0 10px 32px #1c382b1f;
-  font-size: 12px;
 }
 
 .running-icon {

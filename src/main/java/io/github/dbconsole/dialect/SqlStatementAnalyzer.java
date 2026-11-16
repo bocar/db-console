@@ -84,6 +84,42 @@ public final class SqlStatementAnalyzer {
     return sql;
   }
 
+  /**
+   * 脚本拆分（F-13）：按语句边界分号把脚本切成单语句文本序列，语句边界语义与
+   * 单语句分析一致——字符串、引用标识符及注释中的分号不切分；空白或纯注释片段
+   * 不成语句，语句保留原文本（含前置与尾随注释）。未闭合字符串吞到输入末尾的
+   * fail-closed 行为与 analyze 一致，交由数据库拒绝；存储过程体（内含边界分号）
+   * 会被切碎并在此后的逐条分析中归入超范围拒绝（F-13 不支持 DELIMITER）。
+   */
+  public List<String> splitStatements(String sql) {
+    List<String> statements = new ArrayList<>();
+    int partStart = -1;
+    int partEnd = -1;
+    boolean significantSeen = false;
+    for (SqlTokenizer.Token token : tokenizer.tokenize(sql == null ? "" : sql)) {
+      if (token.type() == SqlTokenizer.TokenType.SEMICOLON) {
+        if (significantSeen) {
+          statements.add(sql.substring(partStart, partEnd));
+        }
+        partStart = -1;
+        partEnd = -1;
+        significantSeen = false;
+        continue;
+      }
+      if (partStart < 0) {
+        partStart = token.start();
+      }
+      partEnd = token.start() + token.text().length();
+      if (token.type() != SqlTokenizer.TokenType.COMMENT) {
+        significantSeen = true;
+      }
+    }
+    if (significantSeen) {
+      statements.add(sql.substring(partStart, partEnd));
+    }
+    return statements;
+  }
+
   /** 已有顶层分页或锁定子句时，分页须使用派生表保留原子句边界。 */
   public boolean requiresDerivedTableForPagination(String sql) {
     int depth = 0;

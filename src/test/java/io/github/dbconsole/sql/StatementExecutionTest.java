@@ -348,6 +348,31 @@ class StatementExecutionTest {
   }
 
   /** 自动注册路径：module 外不接触 RunningQuery 的场景。 */
+  @Test
+  @DisplayName("脚本语句（recordHistory=false）：写语句路径同样不写会话历史（F-13 汇总由专用端点记录）")
+  void writePathHonorsRecordHistoryFalse() throws Exception {
+    String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
+    when(jdbcStatement.execute(sql)).thenReturn(false);
+    when(jdbcStatement.getUpdateCount()).thenReturn(1);
+
+    execution.execute(request(sql, null, false));
+
+    verify(history, never()).record(anyString(), anyString(), anyString(), anyLong(), anyBoolean());
+  }
+
+  @Test
+  @DisplayName("脚本内只读查询被取消：按取消终态返回而非结果未知")
+  void cancelledScriptSelectReturnsCancelledOutcome() throws Exception {
+    String sql = "SELECT name FROM dbconsole_test_t";
+    RunningQuery running = runningQueries.register(SESSION_TOKEN, SOURCE_ID);
+    running.requestCancel();
+    when(jdbcStatement.execute(sql)).thenThrow(new SQLException(" Statement cancelled"));
+
+    SqlResponses response = execution.execute(request(sql, running, null, false));
+
+    assertThat(response).isInstanceOf(SqlResponses.Cancelled.class);
+  }
+
   private StatementExecution.ExecutionRequest request(
       String sql, StatementExecution.PageRequest page, boolean recordHistory) {
     return request(
@@ -392,6 +417,7 @@ class StatementExecutionTest {
             Duration.ofSeconds(30), 20_000, 1, 100, 1_000, 65_536, 10_485_760),
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./target/test-audit", Duration.ofDays(30)),
+        null,
         List.of(source));
   }
 }
