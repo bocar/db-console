@@ -56,35 +56,66 @@ public class SqlExecutionService {
   }
 
   public SqlResponses execute(String sessionToken, String username, SqlRequest request) {
-    if (request.sql().length() > properties.execution().maxSqlLength()) {
-      throw new SqlRejectException("SQL_TOO_LONG", "SQL 长度超过上限");
+    return executeStatement(sessionToken, username, request, ExecutionPolicy.WORKSPACE);
+  }
+
+  /**
+   * 脚本单语句执行（F-13）：整份脚本已预校验通过，这里按既有单语句机制逐条运行。
+   * 确认凭据逐语句照常校验（F-09 绑定不变式），审计逐语句落盘；会话历史不在此写，
+   * 汇总由专用端点（ScriptService.recordRun）记录。
+   */
+  public SqlResponses executeScriptStatement(String sessionToken, String username, SqlRequest request) {
+    return executeStatement(sessionToken, username, request, ExecutionPolicy.SCRIPT);
+  }
+
+  /**
+   * 单语句执行的统一编排：工作台与脚本两条入口的差异收敛为 {@link ExecutionPolicy} 三条
+   * 正交语义轴——事务策略（工作台允许手动事务连接、仅拦截事务内隐式提交 DDL（F-16）；
+   * 脚本恒自动提交、存在未提交事务即拒绝）、查询路由（工作台 SELECT 分页取数；脚本 SELECT
+   * 走不分页截断路径，分页不属于脚本结果语义）与会话历史（脚本不写，汇总由专用端点记录）。
+   * 确认分派、DESC 特例与审计包裹两条入口完全一致。
+   */
+  private SqlResponses executeStatement(
+      String sessionToken, String username, SqlRequest request, ExecutionPolicy policy) {
+    StatementGates.GateViolation lengthViolation =
+        StatementGates.lengthViolation(request.sql(), properties.execution().maxSqlLength());
+    if (lengthViolation != null) {
+      throw new SqlRejectException(lengthViolation.code(), lengthViolation.message());
     }
     Precheck precheck = precheck(request.sourceId(), request.sql());
     ResolvedDataSource source = precheck.source();
     SqlStatement statement = precheck.statement();
-    if (statement.kind() == StatementKind.OTHER) {
-      throw new SqlRejectException("OUT_OF_SCOPE", "该语句超出允许的操作范围");
+    StatementGates.GateViolation scopeViolation = StatementGates.scopeViolation(statement);
+    if (scopeViolation != null) {
+      throw new SqlRejectException(scopeViolation.code(), scopeViolation.message());
     }
     Connection transactionConnection = transactions.connectionFor(sessionToken, source.id());
-    // 有未提交事务时隐式提交 DDL 一律先拦截（F-16），不进入确认流程
-    if (transactionConnection != null && statement.kind().isImplicitCommitDdl()) {
-      throw new TransactionStateException(
-          TransactionManager.CODE_TRANSACTION_OPEN,
-          "请先提交或回滚当前事务，再执行隐式提交 DDL");
+    if (transactionConnection != null) {
+      if (!policy.manualTransactionAllowed()) {
+        throw new TransactionStateException(
+            TransactionManager.CODE_TRANSACTION_OPEN,
+            TransactionManager.MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT);
+      }
+      // 有未提交事务时隐式提交 DDL 一律先拦截（F-16），不进入确认流程
+      if (statement.kind().isImplicitCommitDdl()) {
+        throw new TransactionStateException(
+            TransactionManager.CODE_TRANSACTION_OPEN,
+            "请先提交或回滚当前事务，再执行隐式提交 DDL");
+      }
     }
     // DESC 走对象树同一结构查询（F-06），不执行原生 SQL，不占执行并发额度
     if (statement.kind() == StatementKind.DESCRIBE) {
       return auditExecution(source, request.sql(), username,
           () -> describeAsQuery(source, request.sql()));
     }
-    if (statement.kind() == StatementKind.SELECT) {
+    if (policy.paginate() && statement.kind() == StatementKind.SELECT) {
       RunningQuery running = runningQueries.register(sessionToken, source.id());
       return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
           new StatementExecution.ExecutionRequest(
               source, sessionToken, transactionConnection, running, statement,
               request.sql(),
               new StatementExecution.PageRequest(1, properties.execution().defaultPageSize()),
-              true)));
+              policy.recordHistory())));
     }
     if (confirmations.check(
             sessionToken, source.id(), source.environment(), statement,
@@ -97,7 +128,18 @@ public class SqlExecutionService {
     return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
         new StatementExecution.ExecutionRequest(
             source, sessionToken, transactionConnection, running, statement,
-            request.sql(), null, true)));
+            request.sql(), null, policy.recordHistory())));
+  }
+
+  /**
+   * 单语句入口差异的三条正交语义轴：是否允许并入手动事务、SELECT 是否分页取数、
+   * 是否写会话历史。新入口类型按语义组合声明策略，而非在编排里加布尔分支。
+   */
+  private record ExecutionPolicy(
+      boolean manualTransactionAllowed, boolean paginate, boolean recordHistory) {
+
+    static final ExecutionPolicy WORKSPACE = new ExecutionPolicy(true, true, true);
+    static final ExecutionPolicy SCRIPT = new ExecutionPolicy(false, false, false);
   }
 
   /** 取消当前登录会话在本数据源运行中的查询（F-14）；其他会话的查询不可见。 */

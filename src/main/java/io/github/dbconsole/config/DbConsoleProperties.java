@@ -17,10 +17,13 @@ public record DbConsoleProperties(
     @NotNull @Valid ExecutionProperties execution,
     @NotNull @Valid TransactionProperties transaction,
     @NotNull @Valid AuditProperties audit,
+    @Valid ScriptProperties script,
     @Valid List<DataSourceProperties> dataSources) {
 
+  /** 构造期收口缺省：script 未配置时取默认值，dataSources 未配置时为空列表（F-13）。 */
   public DbConsoleProperties {
     dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);
+    script = script == null ? ScriptProperties.defaults() : script;
     long distinctIds = dataSources.stream().map(DataSourceProperties::id).distinct().count();
     if (distinctIds != dataSources.size()) {
       throw new IllegalArgumentException("Datasource identifiers must be unique");
@@ -48,6 +51,17 @@ public record DbConsoleProperties(
   }
 
   public record TransactionProperties(@NotNull Duration idleTimeout) {}
+
+  /** 脚本上传限制（F-13）：文件大小与语句数上限；配置缺省时取默认值。 */
+  public record ScriptProperties(@Positive long maxFileBytes, @Positive int maxStatements) {
+
+    private static final long DEFAULT_MAX_FILE_BYTES = 5_242_880L;
+    private static final int DEFAULT_MAX_STATEMENTS = 1_000;
+
+    public static ScriptProperties defaults() {
+      return new ScriptProperties(DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_STATEMENTS);
+    }
+  }
 
   /** 零或负保留期会在写入当天即删当日审计文件，构造期直接拒绝。 */
   public record AuditProperties(@NotBlank String directory, @NotNull Duration retention) {

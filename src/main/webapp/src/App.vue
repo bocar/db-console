@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import LoginPage from './components/LoginPage.vue'
+import ScriptPage from './components/ScriptPage.vue'
 import WorkspacePage from './components/WorkspacePage.vue'
 import { HttpApiClient } from './api/http-client'
 import { provideApiClient } from './api/client'
@@ -10,6 +11,7 @@ const client = new HttpApiClient()
 provideApiClient(client)
 const { status, refresh, logout, expire } = useSession(client)
 client.onSessionExpired(expire)
+const view = ref<'workspace' | 'script'>('workspace')
 
 onMounted(() => {
   void refresh()
@@ -19,7 +21,10 @@ onMounted(() => {
 <template>
   <div v-if="status === 'unknown'" class="app-boot">正在检查登录状态…</div>
   <LoginPage v-else-if="status === 'anonymous'" />
-  <WorkspacePage v-else @logout="logout" />
+  <template v-else>
+    <WorkspacePage v-if="view === 'workspace'" @logout="logout" @switch-view="view = $event" />
+    <ScriptPage v-else @logout="logout" @switch-view="view = $event" />
+  </template>
 </template>
 
 <style scoped>

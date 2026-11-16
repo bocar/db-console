@@ -28,6 +28,10 @@ public class TransactionManager {
   public static final String CODE_TRANSACTION_OPEN = "TRANSACTION_OPEN";
   public static final String CODE_NO_TRANSACTION = "NO_TRANSACTION";
 
+  /** 脚本执行与手动事务互斥的统一文案（F-13）：预校验与逐条执行两处共用。 */
+  public static final String MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT =
+      "脚本执行使用自动提交连接，请先提交或回滚当前事务";
+
   private static final Logger log = LoggerFactory.getLogger(TransactionManager.class);
   private static final long SWEEP_INTERVAL_MILLIS = 30_000;
 

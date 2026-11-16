@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useApiClient } from '../api/client'
+import { apiErrorMessage } from '../api/error-message'
 import type { ConfirmationRequired } from '../types'
 import { useToast } from './useToast'
 import type { useDataSources } from './useDataSources'
@@ -89,8 +90,7 @@ export function useExecution(deps: ExecutionDeps) {
         toast.notify('执行成功，变更已生效。')
       }
     } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : '执行失败。'
-      toast.notify(message)
+      toast.notify(apiErrorMessage(error, '执行失败。'))
     } finally {
       isRunning.value = false
       canceling.value = false

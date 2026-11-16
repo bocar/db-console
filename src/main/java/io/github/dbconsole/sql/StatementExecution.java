@@ -51,7 +51,8 @@ class StatementExecution {
 
   /**
    * 一次语句执行的请求。分页查询传 {@link PageRequest}（执行方走 +1 探测与总数统计），
-   * 写语句传 null；recordHistory 仅作用于分页路径（写语句路径恒记录，page 入口的重执行不记录）。
+   * 写语句传 null；recordHistory 作用于全部执行路径——脚本语句（F-13）传 false，
+   * 汇总历史由专用端点记录，page 入口的重执行同样不记录。
    */
   record ExecutionRequest(
       ResolvedDataSource source,
@@ -163,7 +164,9 @@ class StatementExecution {
       log.info(
           "SQL 执行完成 sourceId={} kind={} elapsedMs={}",
           source.id(), statement.kind(), elapsedMs);
-      history.record(request.sessionToken(), source.id(), sql, elapsedMs, inTransaction);
+      if (request.recordHistory()) {
+        history.record(request.sessionToken(), source.id(), sql, elapsedMs, inTransaction);
+      }
       if (isResultSet) {
         try (ResultSet resultSet = jdbcStatement.getResultSet()) {
           result = QueryResultMapper.map(resultSet, properties.execution(), elapsedMs);
@@ -199,7 +202,8 @@ class StatementExecution {
     ResolvedDataSource source = request.source();
     StatementKind kind = request.statement().kind();
     if (request.running().isCancelRequested()) {
-      if (paged) {
+      // 只读语句（含分页查询）取消后状态可判，按取消终态返回；写入取消则结果未知（F-10）
+      if (kind == StatementKind.SELECT) {
         log.info("查询已取消 sourceId={} elapsedMs={}", source.id(), elapsedMs);
         return new SqlResponses.Cancelled(elapsedMs);
       }

@@ -29,14 +29,34 @@ public class HistoryService {
     this.clock = clock;
   }
 
+  /** 条目类别（wire）：SQL 为普通单语句执行，SCRIPT 为脚本运行汇总。 */
+  public static final String KIND_SQL = "SQL";
+  public static final String KIND_SCRIPT = "SCRIPT";
+
   /** 记录一条已执行的 SQL（失败路径在记录前已抛出，故仅存在成功终态）。 */
   public void record(String sessionToken, String sourceId, String sql, long durationMs,
       boolean uncommitted) {
+    recordEntry(sessionToken, sourceId, sql, durationMs, uncommitted, null, KIND_SQL);
+  }
+
+  /**
+   * 记录一次脚本运行的汇总历史（F-13）：完整执行结束的运行由专用端点调用，文件名单独标识。
+   * 全文入史是 F-13 明文要求；条目随会话存亡，最坏驻留为每数据源 100×maxFileBytes（约 500MB），
+   * 会话结束即整体释放——不引入按字节裁剪，避免削弱「找回完整脚本」的历史职责。
+   */
+  public void recordScriptRun(
+      String sessionToken, String sourceId, String filename, String script, long durationMs) {
+    recordEntry(sessionToken, sourceId, script, durationMs, false, filename, KIND_SCRIPT);
+  }
+
+  private void recordEntry(
+      String sessionToken, String sourceId, String sql, long durationMs,
+      boolean uncommitted, String filename, String kind) {
     historyBySession
         .computeIfAbsent(sessionToken, k -> new ConcurrentHashMap<>())
         .computeIfAbsent(sourceId, k -> new LinkedList<>())
         .addFirst(new HistoryEntry(idGenerator.incrementAndGet(), sourceId, sql,
-            clock.instant().toString(), durationMs, "SUCCEEDED", uncommitted));
+            clock.instant().toString(), durationMs, "SUCCEEDED", uncommitted, filename, kind));
     trim(sessionToken, sourceId);
   }
 
@@ -74,8 +94,8 @@ public class HistoryService {
     }
   }
 
-  /** 历史条目（wire）。 */
+  /** 历史条目（wire）：kind 区分普通语句与脚本汇总；filename 仅脚本汇总条目携带。 */
   public record HistoryEntry(
       long id, String sourceId, String sql, String executedAt,
-      long durationMs, String status, boolean uncommitted) {}
+      long durationMs, String status, boolean uncommitted, String filename, String kind) {}
 }

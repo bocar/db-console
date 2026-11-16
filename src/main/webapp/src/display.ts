@@ -1,4 +1,12 @@
-import type { ConfirmationRequired, DatabaseType, Environment, HistoryEntry, QueryValue } from './types'
+import type {
+  ConfirmationRequired,
+  DatabaseType,
+  Environment,
+  HistoryEntry,
+  QueryValue,
+  ScriptStatementStatus,
+  StatementKind,
+} from './types'
 
 const ENVIRONMENT_TEXT: Record<Environment, string> = {
   DEVELOPMENT: '开发',
@@ -64,4 +72,41 @@ const CONFIRMATION_REASON_TEXT: Record<ConfirmationReason, string> = {
 
 export function confirmationReasonText(reason: ConfirmationReason): string {
   return CONFIRMATION_REASON_TEXT[reason]
+}
+
+/** 脚本语句类别（F-13），从 wire 类型派生。 */
+const STATEMENT_KIND_TEXT: Record<StatementKind, string> = {
+  SELECT: '查询',
+  INSERT: '插入',
+  UPDATE: '更新',
+  DELETE: '删除',
+  DESCRIBE: '结构',
+  CREATE_TABLE: '建表',
+  ALTER_TABLE: '改表',
+  DROP_TABLE: '删表',
+  COMMENT_ON: '注释',
+  OTHER: '其他',
+}
+
+export function displayStatementKind(kind: StatementKind): string {
+  return STATEMENT_KIND_TEXT[kind]
+}
+
+const SCRIPT_STATUS_TEXT: Record<ScriptStatementStatus, string> = {
+  PENDING: '待执行',
+  RUNNING: '执行中',
+  SUCCEEDED: '成功',
+  FAILED: '失败',
+  CANCELLED: '已取消',
+  UNKNOWN_OUTCOME: '结果未知',
+  SKIPPED: '未执行',
+}
+
+export function displayScriptStatus(status: ScriptStatementStatus): string {
+  return SCRIPT_STATUS_TEXT[status]
+}
+
+/** 脚本停止类终态：失败、取消或结果未知——脚本循环据此停发后续语句（F-13 失败即停）。 */
+export function isStopStatus(status: ScriptStatementStatus): boolean {
+  return status === 'FAILED' || status === 'CANCELLED' || status === 'UNKNOWN_OUTCOME'
 }

@@ -25,6 +25,15 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
       },
       cancel: async () => ({ kind: 'COMPLETED' as const }),
     },
+    script: {
+      analyze: async () => {
+        throw new Error('fakeApiClient: script.analyze 未在用例中覆盖')
+      },
+      executeStatement: async () => {
+        throw new Error('fakeApiClient: script.executeStatement 未在用例中覆盖')
+      },
+      recordRun: async () => undefined,
+    },
     transaction: {
       begin: async () => ({ active: true, sourceId: null }),
       commit: async () => ({ active: false, sourceId: null }),

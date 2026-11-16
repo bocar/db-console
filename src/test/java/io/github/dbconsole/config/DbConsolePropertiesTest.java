@@ -46,6 +46,9 @@ class DbConsolePropertiesTest {
     assertThat(properties.transaction().idleTimeout()).isEqualTo(Duration.ofMinutes(10));
     assertThat(properties.audit().directory()).isEqualTo("./audit");
     assertThat(properties.audit().retention()).isEqualTo(Duration.ofDays(30));
+    // 脚本限制未配置时取默认值（F-13）
+    assertThat(properties.script().maxFileBytes()).isEqualTo(5_242_880L);
+    assertThat(properties.script().maxStatements()).isEqualTo(1_000);
 
     assertThat(properties.dataSources()).hasSize(1);
     DbConsoleProperties.DataSourceProperties dataSource = properties.dataSources().get(0);
@@ -88,6 +91,7 @@ class DbConsolePropertiesTest {
                     execution(),
                     new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
                     audit(),
+                    null,
                     List.of(first, second)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unique");
@@ -104,6 +108,7 @@ class DbConsolePropertiesTest {
                 MAX_CELL_BYTES, MAX_RESULT_BYTES),
             new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
             audit(),
+            null,
             List.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("default-page-size");

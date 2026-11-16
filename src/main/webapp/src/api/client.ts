@@ -8,6 +8,7 @@ import type {
   ExecutionOutcome,
   HistoryEntry,
   QueryResult,
+  ScriptAnalyzeResult,
   SessionInfo,
   TableDefinition,
   TransactionStatus,
@@ -37,6 +38,12 @@ export interface ApiClient {
     execute(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>
     page(sourceId: string, sql: string, page: number, pageSize: number): Promise<QueryResult | CancelledOutcome>
     cancel(sourceId: string): Promise<CancelOutcome>
+  }
+  /** 脚本执行（F-13）：预校验、逐条执行与运行汇总历史。 */
+  script: {
+    analyze(sourceId: string, filename: string, content: string): Promise<ScriptAnalyzeResult>
+    executeStatement(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>
+    recordRun(sourceId: string, scriptId: string, durationMs: number): Promise<void>
   }
   transaction: {
     begin(sourceId: string): Promise<TransactionStatus>

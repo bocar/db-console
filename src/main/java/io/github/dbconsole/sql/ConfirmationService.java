@@ -64,7 +64,12 @@ public final class ConfirmationService {
         issue(sessionToken, sourceId, sql));
   }
 
-  String issue(String sessionToken, String sourceId, String sql) {
+  /**
+   * 签发与「会话 + 数据源 + SQL 文本」绑定的确认凭据。单语句执行由 {@link #check}
+   * 随 Required 响应签发；脚本预校验（F-13）在整份脚本通过后逐语句调用，
+   * 绑定强度与单语句路径完全一致。
+   */
+  public String issue(String sessionToken, String sourceId, String sql) {
     return hmac(message(sessionToken, sourceId, sql));
   }
 
