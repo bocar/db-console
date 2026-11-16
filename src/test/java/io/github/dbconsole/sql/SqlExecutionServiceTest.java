@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -229,8 +230,12 @@ class SqlExecutionServiceTest {
   @DisplayName("存在未提交手动事务时脚本单语句执行被拒绝，不进入执行与审计（F-16 互斥）")
   void scriptStatementRejectsOpenTransaction() {
     String sql = "UPDATE dbconsole_test_t SET name = 'new' WHERE id = 1";
-    when(transactions.connectionFor(SESSION_TOKEN, SOURCE_ID))
-        .thenReturn(mock(java.sql.Connection.class));
+    doThrow(
+            new io.github.dbconsole.transaction.TransactionStateException(
+                TransactionManager.CODE_TRANSACTION_OPEN,
+                "脚本执行使用自动提交连接，请先提交或回滚当前事务"))
+        .when(transactions)
+        .requireScriptAutoCommit(SESSION_TOKEN, SOURCE_ID);
 
     assertThatThrownBy(
             () -> executionService.executeScriptStatement(SESSION_TOKEN, USERNAME, request(sql)))

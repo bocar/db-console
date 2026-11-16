@@ -28,8 +28,8 @@ public class TransactionManager {
   public static final String CODE_TRANSACTION_OPEN = "TRANSACTION_OPEN";
   public static final String CODE_NO_TRANSACTION = "NO_TRANSACTION";
 
-  /** 脚本执行与手动事务互斥的统一文案（F-13）：预校验与逐条执行两处共用。 */
-  public static final String MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT =
+  /** 脚本执行与手动事务互斥的统一文案（F-13）：守卫 requireScriptAutoCommit 专用。 */
+  private static final String MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT =
       "脚本执行使用自动提交连接，请先提交或回滚当前事务";
 
   private static final Logger log = LoggerFactory.getLogger(TransactionManager.class);
@@ -116,6 +116,17 @@ public class TransactionManager {
     }
     transaction.touch(clock.instant());
     return transaction.connection();
+  }
+
+  /**
+   * 脚本执行与手动事务互斥守卫（F-13/F-16）：存在未提交事务即拒绝；
+   * 预校验与逐条执行两个入口共用，跨数据源事务沿用 connectionFor 的拒绝语义。
+   */
+  public void requireScriptAutoCommit(String sessionToken, String sourceId) {
+    if (connectionFor(sessionToken, sourceId) != null) {
+      throw new TransactionStateException(
+          CODE_TRANSACTION_OPEN, MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT);
+    }
   }
 
   /** 执行语句后刷新事务空闲时钟。 */

@@ -1,12 +1,13 @@
 package io.github.dbconsole.sql;
 
+import static io.github.dbconsole.web.JsonText.jsonText;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.github.dbconsole.jdbc.CredentialSource;
 import com.jayway.jsonpath.JsonPath;
+import io.github.dbconsole.jdbc.CredentialSource;
 import io.github.dbconsole.web.AuthTestSupport;
 import jakarta.servlet.http.Cookie;
 import java.util.Map;
@@ -86,11 +87,6 @@ class SqlApiTest {
             .cookie(session)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body));
-  }
-
-
-  private static String jsonText(String value) {
-    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
   }
 
   @Test

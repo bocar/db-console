@@ -1,5 +1,6 @@
 package io.github.dbconsole.sql;
 
+import static io.github.dbconsole.web.JsonText.jsonText;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -126,10 +127,6 @@ class SqlExecutionMySqlIntegrationTest {
                     "{\"sourceId\":\"mysql-work-note\",\"sql\":%s,\"confirmationToken\":\"%s\"}"
                         .formatted(jsonText(sql), token)))
         .andReturn();
-  }
-
-  private static String jsonText(String value) {
-    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
   }
 
   private String body(MvcResult result) throws Exception {

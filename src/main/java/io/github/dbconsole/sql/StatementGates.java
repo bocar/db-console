@@ -10,8 +10,8 @@ import io.github.dbconsole.dialect.StatementKind;
  */
 public final class StatementGates {
 
-  public static final String CODE_SQL_TOO_LONG = "SQL_TOO_LONG";
-  public static final String CODE_OUT_OF_SCOPE = "OUT_OF_SCOPE";
+  private static final String CODE_SQL_TOO_LONG = "SQL_TOO_LONG";
+  private static final String CODE_OUT_OF_SCOPE = "OUT_OF_SCOPE";
 
   private StatementGates() {}
 

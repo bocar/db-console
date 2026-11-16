@@ -236,7 +236,7 @@ export class MockApiClient implements ApiClient {
       sql: string,
       confirmationToken?: string,
     ): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome> => {
-      await this.delay(this.delayMs === 0 ? 0 : 60)
+      await this.delay(60)
       return this.resolveExecution(sourceId, sql, confirmationToken, false)
     },
     recordRun: async (

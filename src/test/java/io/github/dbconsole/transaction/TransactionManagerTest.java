@@ -212,6 +212,20 @@ class TransactionManagerTest {
   }
 
   @Test
+  @DisplayName("脚本互斥守卫：存在未提交事务即拒绝，事务结束后放行")
+  void requireScriptAutoCommitRejectsOpenTransaction() throws Exception {
+    String token = loginSession();
+    manager.begin(token, source("mysql-work-note"));
+
+    assertThatThrownBy(() -> manager.requireScriptAutoCommit(token, "mysql-work-note"))
+        .isInstanceOf(TransactionStateException.class)
+        .hasMessageContaining("请先提交或回滚当前事务");
+
+    manager.rollback(token, "mysql-work-note");
+    manager.requireScriptAutoCommit(token, "mysql-work-note");
+  }
+
+  @Test
   @DisplayName("空闲超过时限后清理：回滚并释放")
   void cleanupRollsBackIdleTransactions() throws Exception {
     String token = loginSession();

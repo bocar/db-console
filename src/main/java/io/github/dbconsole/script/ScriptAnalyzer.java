@@ -13,7 +13,6 @@ import io.github.dbconsole.sql.ConfirmationService;
 import io.github.dbconsole.sql.SqlRejectException;
 import io.github.dbconsole.sql.StatementGates;
 import io.github.dbconsole.transaction.TransactionManager;
-import io.github.dbconsole.transaction.TransactionStateException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -54,7 +53,8 @@ public class ScriptAnalyzer {
   public ScriptAnalyzeResponse analyze(String sessionToken, ScriptUploadRequest request) {
     ResolvedDataSource source = registry.resolve(request.sourceId());
     validateFilename(request.filename());
-    requireNoOpenTransaction(sessionToken, source.id());
+    // 脚本执行与手动事务互斥（F-16）：预校验即前置拒绝，避免通过后中途冲突
+    transactions.requireScriptAutoCommit(sessionToken, source.id());
     String content = stripBom(request.content());
     if (exceedsUtf8Bytes(content, properties.script().maxFileBytes())) {
       throw new SqlRejectException(
@@ -185,15 +185,6 @@ public class ScriptAnalyzer {
 
   /** 预校验通过的语句：序号、原文与分析结果。 */
   private record ValidatedStatement(int index, String text, SqlStatement statement) {}
-
-  /** 脚本执行与手动事务互斥（F-16）：预校验即前置拒绝，避免通过后中途冲突。 */
-  private void requireNoOpenTransaction(String sessionToken, String sourceId) {
-    if (transactions.connectionFor(sessionToken, sourceId) != null) {
-      throw new TransactionStateException(
-          TransactionManager.CODE_TRANSACTION_OPEN,
-          TransactionManager.MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT);
-    }
-  }
 
   private void validateFilename(String filename) {
     String trimmed = filename.trim();

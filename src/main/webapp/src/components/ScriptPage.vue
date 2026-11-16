@@ -22,7 +22,6 @@ const script = useScriptExecution()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const confirmPanelOpen = ref(false)
-let transactionSynced = false
 
 const environmentBadge = computed(() =>
   selectedSource.value ? environmentBadgeClass(selectedSource.value.environment) : '')
@@ -43,9 +42,8 @@ const summaryLines = computed(() => {
 
 onMounted(async () => {
   await dataSources.load()
-  if (!transactionSynced && selectedSource.value) {
+  if (selectedSource.value) {
     transaction.sync(selectedSource.value.id)
-    transactionSynced = true
   }
 })
 
@@ -61,10 +59,7 @@ function changeSource(id: string): void {
     notify('脚本执行中，请等待完成或取消后再切换数据源。')
     return
   }
-  if (transaction.active.value) {
-    notify('当前有未提交事务，请先提交或回滚再切换数据源。')
-    return
-  }
+  if (transaction.blockedByOpenTransaction()) return
   dataSources.selectSource(id)
 }
 
@@ -82,16 +77,10 @@ async function onFileChange(event: Event): Promise<void> {
   input.value = ''
 }
 
-function startRun(): void {
+function runFrom(index: number): void {
   const source = selectedSource.value
   if (!source) return
   confirmPanelOpen.value = false
-  void script.run(0, source.id)
-}
-
-function resumeRun(index: number): void {
-  const source = selectedSource.value
-  if (!source) return
   void script.run(index, source.id)
 }
 </script>
@@ -189,14 +178,14 @@ function resumeRun(index: number): void {
           </ul>
           <p v-else class="confirm-risks-none">本脚本无需执行确认的语句。</p>
           <div class="confirm-actions">
-            <button type="button" class="button button-primary" @click="startRun">
+            <button type="button" class="button button-primary" @click="runFrom(0)">
               <Check :size="14" />确认执行
             </button>
             <button type="button" class="button" @click="confirmPanelOpen = false"><X :size="14" />取消</button>
           </div>
         </div>
 
-        <ScriptStatementList :states="script.states.value" @resume="resumeRun" />
+        <ScriptStatementList :states="script.states.value" @resume="runFrom" />
       </section>
     </main>
     <ToastMessage :message="toastMessage" />

@@ -116,10 +116,7 @@ const beginTransaction = () => {
 const changeSource = (id: string) => {
   const current = selectedSource.value
   if (!current || id === current.id) return
-  if (transaction.active.value) {
-    notify('当前有未提交事务，请先提交或回滚再切换数据源。')
-    return
-  }
+  if (transaction.blockedByOpenTransaction()) return
   dataSources.selectSource(id)
   results.reset()
   mobileSidebarOpen.value = false

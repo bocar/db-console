@@ -39,10 +39,7 @@ export function useScriptExecution() {
   )
   const progress = computed(() => {
     const succeeded = states.value.filter((state) => state.status === 'SUCCEEDED').length
-    const stoppedAt = states.value.findIndex(
-      (state) =>
-        state.status === 'FAILED' || state.status === 'CANCELLED' || state.status === 'UNKNOWN_OUTCOME',
-    )
+    const stoppedAt = states.value.findIndex((state) => isStopStatus(state.status))
     return { succeeded, total: states.value.length, stoppedAt }
   })
   const allSucceeded = computed(
@@ -219,7 +216,6 @@ export function useScriptExecution() {
 
   return {
     filename,
-    analyzedSourceId,
     plans,
     states,
     analyzing,

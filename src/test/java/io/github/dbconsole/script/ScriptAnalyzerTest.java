@@ -2,15 +2,14 @@ package io.github.dbconsole.script;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.sql.ConfirmationService;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
-import java.sql.Connection;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -220,8 +219,12 @@ class ScriptAnalyzerTest {
   @Test
   @DisplayName("存在未提交手动事务时预校验前置拒绝（F-16 互斥）")
   void openTransactionRejectsAnalyze() {
-    when(transactions.connectionFor(SESSION_TOKEN, DEV_SOURCE))
-        .thenReturn(mock(Connection.class));
+    doThrow(
+            new TransactionStateException(
+                TransactionManager.CODE_TRANSACTION_OPEN,
+                "脚本执行使用自动提交连接，请先提交或回滚当前事务"))
+        .when(transactions)
+        .requireScriptAutoCommit(SESSION_TOKEN, DEV_SOURCE);
 
     assertThatThrownBy(
             () -> analyzer.analyze(SESSION_TOKEN, upload(DEV_SOURCE, "x.sql", "SELECT 1;")))

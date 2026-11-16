@@ -1,5 +1,6 @@
 package io.github.dbconsole.sql;
 
+import static io.github.dbconsole.web.JsonText.jsonText;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -182,10 +183,6 @@ class SqlExecutionDm8IntegrationTest {
 
   private Connection dm8Connection() throws SQLException {
     return DriverManager.getConnection(JDBC_URL, "navic", dm8Password());
-  }
-
-  private static String jsonText(String value) {
-    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
   }
 
   private static String body(MvcResult result) throws Exception {

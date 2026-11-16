@@ -1,5 +1,6 @@
 package io.github.dbconsole.script;
 
+import static io.github.dbconsole.web.JsonText.jsonText;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -138,10 +139,6 @@ class ScriptApiTest {
         .andExpect(jsonPath("$.confirmationToken").value(freshToken));
   }
 
-  private static String jsonText(String value) {
-    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-  }
-
   @Test
   @DisplayName("汇总历史按 scriptId 落库：文件名与全文取自预校验暂存，条目带 SCRIPT 类别")
   void scriptRunHistoryIsRecordedAsSummaryEntry() throws Exception {
@@ -214,7 +211,7 @@ class ScriptApiTest {
   private ResultActions analyze(String sourceId, String filename, String content) throws Exception {
     return mockMvc.perform(post("/api/sql/script/analyze").cookie(session)
         .contentType(MediaType.APPLICATION_JSON)
-        .content("{\"sourceId\":\"%s\",\"filename\":\"%s\",\"content\":\"%s\"}"
-            .formatted(sourceId, filename, content.replace("\n", "\\n"))));
+        .content("{\"sourceId\":\"%s\",\"filename\":%s,\"content\":%s}"
+            .formatted(sourceId, jsonText(filename), jsonText(content))));
   }
 }

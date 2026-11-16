@@ -9,10 +9,22 @@ const emit = defineEmits<{ load: [sql: string]; clear: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 const filter = ref('')
 
+/** 小写缓存：SCRIPT 条目携带整份脚本文本，逐键 toLowerCase 会反复分配大字符串。 */
+const loweredEntries = computed(() =>
+  props.entries.map((entry) => ({ entry, lowered: entry.sql.toLowerCase() })),
+)
+
 const filteredEntries = computed(() => {
   const keyword = filter.value.trim().toLowerCase()
-  return keyword ? props.entries.filter((entry) => entry.sql.toLowerCase().includes(keyword)) : props.entries
+  if (!keyword) return props.entries
+  return loweredEntries.value
+    .filter((item) => item.lowered.includes(keyword))
+    .map((item) => item.entry)
 })
+
+/** 渲染截断：<pre> 本就按最大高度裁剪，超长脚本（SCRIPT 汇总）不必整段进 DOM。 */
+const RENDER_LIMIT = 4000
+const previewOf = (sql: string): string => (sql.length > RENDER_LIMIT ? sql.slice(0, RENDER_LIMIT) : sql)
 
 const open = () => dialog.value?.showModal()
 const load = (sql: string) => {
@@ -45,7 +57,7 @@ defineExpose({ open })
           <span class="history-status" :class="{ pending: entry.uncommitted, failed: entry.status === 'FAILED' }">{{ displayHistoryStatus(entry) }}</span>
           <span v-if="entry.filename" class="history-filename">脚本 · {{ entry.filename }}</span>
         </div>
-        <pre class="mono">{{ entry.sql }}</pre>
+        <pre class="mono">{{ previewOf(entry.sql) }}</pre>
         <button v-if="entry.kind === 'SQL'" type="button" class="load-history" @click="load(entry.sql)">载入编辑器</button>
         <span v-else class="script-entry-hint">脚本汇总记录不回灌编辑器，请在「脚本执行」页重新上传</span>
       </article>

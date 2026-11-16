@@ -66,10 +66,17 @@ export function useManualTransaction() {
     active.value = true
   }
 
+  /** 切换数据源守卫：存在未提交事务时提示并返回 true，调用方据此中止切换。 */
+  function blockedByOpenTransaction(): boolean {
+    if (!active.value) return false
+    toast.notify('当前有未提交事务，请先提交或回滚再切换数据源。')
+    return true
+  }
+
   function reset(): void {
     active.value = false
     busy.value = false
   }
 
-  return { active, busy, begin, commit, rollback, sync, markPending, reset }
+  return { active, busy, begin, commit, rollback, sync, markPending, blockedByOpenTransaction, reset }
 }
