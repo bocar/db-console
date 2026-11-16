@@ -47,8 +47,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "db-console.data-sources[0].environment=DEVELOPMENT",
       "db-console.data-sources[0].database-type=MYSQL",
       "db-console.data-sources[0].compatibility-mode=NATIVE",
-      "db-console.data-sources[0].jdbc-url=jdbc:mysql://localhost:3306/work_note",
-      "db-console.data-sources[0].username=root",
+      "db-console.data-sources[0].jdbc-url=jdbc:mysql://47.98.61.214:3306/zhstudy",
+      "db-console.data-sources[0].username=zhuhui",
       "db-console.data-sources[0].credential-ref=DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD",
       "db-console.data-sources[1].id=other-source",
       "db-console.data-sources[1].display-name=另一数据源",
@@ -56,7 +56,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
       "db-console.data-sources[1].database-type=MYSQL",
       "db-console.data-sources[1].compatibility-mode=NATIVE",
       "db-console.data-sources[1].jdbc-url=jdbc:mysql://127.0.0.1:1/never",
-      "db-console.data-sources[1].username=root",
+      "db-console.data-sources[1].username=zhuhui",
       "db-console.data-sources[1].credential-ref=DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD",
     })
 class TransactionMySqlIntegrationTest {
@@ -102,7 +102,7 @@ class TransactionMySqlIntegrationTest {
 
   private Connection mysqlConnection() throws SQLException {
     return DriverManager.getConnection(
-        "jdbc:mysql://localhost:3306/work_note", "root", adminPassword());
+        "jdbc:mysql://47.98.61.214:3306/zhstudy", "zhuhui", adminPassword());
   }
 
   private MockHttpServletRequestBuilder sql(String sqlText) {

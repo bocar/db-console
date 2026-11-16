@@ -33,8 +33,8 @@ import org.springframework.test.web.servlet.MockMvc;
       "db-console.data-sources[0].environment=DEVELOPMENT",
       "db-console.data-sources[0].database-type=MYSQL",
       "db-console.data-sources[0].compatibility-mode=NATIVE",
-      "db-console.data-sources[0].jdbc-url=jdbc:mysql://localhost:3306/work_note",
-      "db-console.data-sources[0].username=root",
+      "db-console.data-sources[0].jdbc-url=jdbc:mysql://47.98.61.214:3306/zhstudy",
+      "db-console.data-sources[0].username=zhuhui",
       "db-console.data-sources[0].credential-ref=DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD",
     })
 class ImplicitDdlTransactionIntegrationTest {
