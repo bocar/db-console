@@ -92,6 +92,7 @@ class DbConsolePropertiesTest {
                     new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
                     audit(),
                     null,
+                    null,
                     List.of(first, second)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unique");
@@ -108,6 +109,7 @@ class DbConsolePropertiesTest {
                 MAX_CELL_BYTES, MAX_RESULT_BYTES),
             new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
             audit(),
+            null,
             null,
             List.of()))
         .isInstanceOf(IllegalArgumentException.class)

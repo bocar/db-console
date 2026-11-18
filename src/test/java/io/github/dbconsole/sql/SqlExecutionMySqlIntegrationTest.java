@@ -295,16 +295,17 @@ class SqlExecutionMySqlIntegrationTest {
                               .contentType(MediaType.APPLICATION_JSON)
                               .content(
                                   "{\"sourceId\":\"mysql-work-note\",\"sql\":%s}"
-                                      .formatted(jsonText("SELECT SLEEP(15)"))))
+                                      .formatted(jsonText("SELECT SLEEP(30)"))))
                       .andReturn());
-      // 等待语句进入驱动执行（挂起在 SLEEP 上）再取消
+      // 等待语句进入驱动执行（挂起在 SLEEP 上）再取消；SLEEP 时长留足共享库上
+      // KILL QUERY 新建连接的到达余量（取消机制验收，非毫秒级时序验收）
       Thread.sleep(1_000);
       mockMvc
           .perform(post("/api/sql/mysql-work-note/cancel").cookie(session))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.kind").value("CANCELLED"));
 
-      MvcResult done = executing.get(20, TimeUnit.SECONDS);
+      MvcResult done = executing.get(35, TimeUnit.SECONDS);
       Object outcome = JsonPath.read(body(done), "$.kind");
       assertThat(outcome).isEqualTo("CANCELLED");
     } finally {

@@ -21,6 +21,7 @@ class DataSourceRegistryTest {
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./audit", Duration.ofDays(30)),
         null,
+        null,
         List.of(
             dataSource("mysql-work-note", "DB_CONSOLE_MYSQL_PASSWORD"),
             dataSource("dm8-navic", "DB_CONSOLE_DM8_PASSWORD")));

@@ -265,6 +265,7 @@ class ScriptAnalyzerTest {
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./target/test-audit", Duration.ofDays(30)),
         script,
+        null,
         List.of(dev, prod));
   }
 }

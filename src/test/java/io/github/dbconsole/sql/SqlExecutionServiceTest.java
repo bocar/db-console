@@ -269,6 +269,7 @@ class SqlExecutionServiceTest {
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./target/test-audit", Duration.ofDays(30)),
         null,
+        null,
         List.of(source));
   }
 }

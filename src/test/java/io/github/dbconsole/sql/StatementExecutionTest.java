@@ -58,6 +58,8 @@ class StatementExecutionTest {
   private final ConnectionFactory connections = mock(ConnectionFactory.class);
   private final TransactionManager transactions = mock(TransactionManager.class);
   private final HistoryService history = mock(HistoryService.class);
+  private final io.github.dbconsole.metadata.TableStructureService tableStructures =
+      mock(io.github.dbconsole.metadata.TableStructureService.class);
   private final RunningQueryRegistry runningQueries = new RunningQueryRegistry(1);
   private final Connection connection = mock(Connection.class);
   private final Connection transactionConnection = mock(Connection.class);
@@ -76,7 +78,9 @@ class StatementExecutionTest {
     when(connection.createStatement()).thenReturn(jdbcStatement);
     when(transactionConnection.createStatement()).thenReturn(jdbcStatement);
     execution =
-        new StatementExecution(connections, transactions, runningQueries, history, properties);
+        new StatementExecution(
+            connections, transactions, runningQueries, history, properties,
+            new EditableResultMarker(tableStructures));
     executor = Executors.newSingleThreadExecutor();
   }
 
@@ -382,13 +386,13 @@ class StatementExecutionTest {
   private StatementExecution.ExecutionRequest request(
       String sql, RunningQuery running, StatementExecution.PageRequest page, boolean recordHistory) {
     return new StatementExecution.ExecutionRequest(
-        source, SESSION_TOKEN, null, running, statement(sql), sql, page, recordHistory);
+        source, SESSION_TOKEN, null, running, statement(sql), sql, page, recordHistory, false);
   }
 
   private StatementExecution.ExecutionRequest transactionRequest(String sql) {
     return new StatementExecution.ExecutionRequest(
         source, SESSION_TOKEN, transactionConnection,
-        runningQueries.register(SESSION_TOKEN, SOURCE_ID), statement(sql), sql, null, true);
+        runningQueries.register(SESSION_TOKEN, SOURCE_ID), statement(sql), sql, null, true, false);
   }
 
   private static SqlStatement statement(String sql) {
@@ -417,6 +421,7 @@ class StatementExecutionTest {
             Duration.ofSeconds(30), 20_000, 1, 100, 1_000, 65_536, 10_485_760),
         new DbConsoleProperties.TransactionProperties(Duration.ofMinutes(10)),
         new DbConsoleProperties.AuditProperties("./target/test-audit", Duration.ofDays(30)),
+        null,
         null,
         List.of(source));
   }
