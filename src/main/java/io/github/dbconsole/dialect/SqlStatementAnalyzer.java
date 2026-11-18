@@ -36,11 +36,7 @@ public final class SqlStatementAnalyzer {
 
   /** 分析器无状态可复用：按方言族返回预建实例。 */
   public static SqlStatementAnalyzer forDialect(DatabaseType type, CompatibilityMode mode) {
-    boolean mysqlFamily =
-        type == DatabaseType.MYSQL
-            || type == DatabaseType.TIDB
-            || mode == CompatibilityMode.MYSQL;
-    return mysqlFamily ? MYSQL_FAMILY : OTHER_FAMILY;
+    return DialectFamily.isMysqlFamily(type, mode) ? MYSQL_FAMILY : OTHER_FAMILY;
   }
 
   public SqlAnalysisResult analyze(String sql) {

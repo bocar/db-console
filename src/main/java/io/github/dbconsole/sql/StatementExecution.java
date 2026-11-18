@@ -35,24 +35,28 @@ class StatementExecution {
   private final RunningQueryRegistry runningQueries;
   private final HistoryService history;
   private final DbConsoleProperties properties;
+  private final EditableResultMarker editableMarker;
 
   StatementExecution(
       ConnectionFactory connections,
       TransactionManager transactions,
       RunningQueryRegistry runningQueries,
       HistoryService history,
-      DbConsoleProperties properties) {
+      DbConsoleProperties properties,
+      EditableResultMarker editableMarker) {
     this.connections = connections;
     this.transactions = transactions;
     this.runningQueries = runningQueries;
     this.history = history;
     this.properties = properties;
+    this.editableMarker = editableMarker;
   }
 
   /**
    * 一次语句执行的请求。分页查询传 {@link PageRequest}（执行方走 +1 探测与总数统计），
    * 写语句传 null；recordHistory 作用于全部执行路径——脚本语句（F-13）传 false，
-   * 汇总历史由专用端点记录，page 入口的重执行同样不记录。
+   * 汇总历史由专用端点记录，page 入口的重执行同样不记录。markEditable（F-17）只在工作台
+   * 首次执行的 SELECT 上为 true：翻页与脚本结果不标记。
    */
   record ExecutionRequest(
       ResolvedDataSource source,
@@ -62,7 +66,8 @@ class StatementExecution {
       SqlStatement statement,
       String sql,
       PageRequest page,
-      boolean recordHistory) {}
+      boolean recordHistory,
+      boolean markEditable) {}
 
   record PageRequest(int page, int pageSize) {}
 
@@ -144,6 +149,10 @@ class StatementExecution {
           new SqlResponses.QueryResult(result.columns(), result.rows(), result.elapsedMs(),
               result.truncated(), result.page(), result.pageSize(), result.hasNextPage(),
               totalRows, totalPages);
+    }
+    // 可编辑标记（F-17）：连接仍存活时完成，结构读取搭用同一连接
+    if (request.markEditable()) {
+      result = editableMarker.mark(connection, source, sql, result);
     }
     return result;
   }

@@ -26,9 +26,7 @@ public final class CommentStatementGenerator {
   public static String columnComment(
       DatabaseType type, CompatibilityMode mode,
       String tableName, ColumnDefinition column, String comment) {
-    boolean mysqlFamily =
-        type == DatabaseType.MYSQL || type == DatabaseType.TIDB || mode == CompatibilityMode.MYSQL;
-    if (mysqlFamily) {
+    if (DialectFamily.isMysqlFamily(type, mode)) {
       return mysqlColumnComment(tableName, column, comment);
     }
     return oracleColumnComment(tableName, column, comment);

@@ -34,6 +34,11 @@ export function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
       },
       recordRun: async () => undefined,
     },
+    resultEdit: {
+      save: async () => {
+        throw new Error('fakeApiClient: resultEdit.save 未在用例中覆盖')
+      },
+    },
     transaction: {
       begin: async () => ({ active: true, sourceId: null }),
       commit: async () => ({ active: false, sourceId: null }),

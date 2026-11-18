@@ -1,6 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ResultPanel from './ResultPanel.vue'
+import { API_CLIENT_KEY } from '../api/client'
+import { fakeApiClient } from '../api/test-support'
 import type { QueryColumn, QueryRow, UpdateResult } from '../types'
 
 const queryColumns: QueryColumn[] = [
@@ -28,6 +30,8 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
       hasResult: true,
       ...overrides,
     },
+    // F-17：ResultPanel 经 useResultEditing 依赖 ApiClient 注入
+    global: { provide: { [API_CLIENT_KEY]: fakeApiClient() } },
   })
 }
 

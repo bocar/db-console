@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Check, ChevronLeft, ChevronRight, Clipboard, Code2, Download, Info, KeyRound, Table2 } from 'lucide-vue-next'
-import type { QueryColumn, QueryRow, QueryValue, TableDefinition, UpdateResult } from '../types'
+import { Check, ChevronLeft, ChevronRight, Clipboard, Code2, Download, Info, KeyRound, Plus, Save, Table2, Trash2, Undo2, X } from 'lucide-vue-next'
+import type { EditableColumn, QueryColumn, QueryRow, QueryValue, TableDefinition, UpdateResult } from '../types'
 import { displayQueryValue } from '../display'
+import { useResultEditing } from '../composables/useResultEditing'
 
 const props = defineProps<{
   columns: QueryColumn[]
@@ -31,11 +32,25 @@ const emit = defineEmits<{
   notify: [message: string]
 }>()
 
+// 结果表格编辑（F-17）：模块级暂存状态，双击编辑、删除标记与保存按钮都在本组件内呈现
+const {
+  isEditableResult, canEditCells, editableInfo, dirty: editDirty, saving: editSaving,
+  newRows, newRowErrors,
+  cellDisplay, isRowDeleted, isCellEdited, isEditing,
+  beginEdit, commitEdit, cancelEdit, editDraft,
+  addRow, removeNewRow, setNewRowValue,
+  deleteSelectedRows,
+  save: saveEdits, discardChanges,
+} = useResultEditing()
+
+const editableColumn = (columnIndex: number): EditableColumn | null =>
+  editableInfo.value?.columns[columnIndex] ?? null
+
 const selectedRows = ref(new Set<number>())
 const selectedCell = ref<{ row: number; column: number } | null>({ row: 0, column: 1 })
 const pageCount = computed(() => Math.max(1, props.totalPages ?? props.page + (props.hasNextPage ? 1 : 0)))
 const nextDisabled = computed(() =>
-  props.paging || (props.totalPages == null ? !props.hasNextPage : props.page >= pageCount.value),
+  props.paging || editDirty.value || (props.totalPages == null ? !props.hasNextPage : props.page >= pageCount.value),
 )
 const selectionCount = computed(() => selectedRows.value.size)
 
@@ -114,6 +129,13 @@ const changePage = (event: Event) => {
         <span v-if="selectionCount" class="selection-count">已选 {{ selectionCount }} 行</span>
         <button type="button" class="button" :disabled="!selectedCell && selectionCount === 0" @click="copySelection"><Clipboard :size="14" />复制</button>
         <button type="button" class="button" :disabled="rows.length === 0" @click="exportCsv"><Download :size="14" />导出 CSV</button>
+        <template v-if="isEditableResult">
+          <span class="edit-divider" aria-hidden="true"></span>
+          <button type="button" class="button" :disabled="!canEditCells" :title="canEditCells ? '在表格顶部新增一行' : '存在未提交手动事务，表格编辑不可用'" @click="addRow"><Plus :size="14" />新增</button>
+          <button type="button" class="button" :disabled="!canEditCells || selectionCount === 0" title="标记选中行为待删除，随保存一起提交" @click="deleteSelectedRows(selectedRows)"><Trash2 :size="14" />删除</button>
+          <button v-if="editDirty" type="button" class="button button-primary" :disabled="editSaving || !canEditCells" @click="saveEdits"><Save :size="14" />{{ editSaving ? '保存中…' : '保存' }}</button>
+          <button v-if="editDirty" type="button" class="button" :disabled="editSaving" title="丢弃全部未保存更改并重新加载当前页" @click="discardChanges"><Undo2 :size="14" />放弃更改</button>
+        </template>
       </div>
     </div>
 
@@ -141,18 +163,67 @@ const changePage = (event: Event) => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, rowIndex) in rows" :key="`${page}-${rowIndex}`" :class="{ 'row-selected': selectedRows.has(rowIndex) }">
-              <th scope="row" class="row-number-cell">
-                <input type="checkbox" :checked="selectedRows.has(rowIndex)" :aria-label="`选择第 ${(page - 1) * pageSize + rowIndex + 1} 行`" @change="toggleRow(rowIndex)" />
-                <span class="mono">{{ (page - 1) * pageSize + rowIndex + 1 }}</span>
+            <tr v-for="(inputs, newRowIndex) in newRows" :key="`new-${newRowIndex}`" class="row-new" :class="{ 'row-invalid': newRowErrors[newRowIndex] }">
+              <th scope="row" class="row-number-cell new-row-marker">
+                <button type="button" class="icon-button" :aria-label="`移除第 ${newRowIndex + 1} 条新增行`" :title="newRowErrors[newRowIndex] ?? '移除该新增行'" @click="removeNewRow(newRowIndex)"><X :size="12" /></button>
+                <span class="mono new-badge">新</span>
               </th>
-              <td v-for="(value, columnIndex) in row" :key="`${rowIndex}-${columnIndex}`" :class="{ 'cell-selected': selectedCell?.row === rowIndex && selectedCell.column === columnIndex }" :data-label="columns[columnIndex].name" :title="displayValue(value)" @click="selectedCell = { row: rowIndex, column: columnIndex }">
-                <span v-if="value === null" class="null-value mono">NULL</span>
-                <span v-else-if="value === ''" class="empty-value">空字符串</span>
-                <span v-else class="cell-value mono">{{ displayValue(value) }}</span>
+              <td v-for="(column, columnIndex) in columns" :key="`new-${newRowIndex}-${columnIndex}`" :data-label="column.name">
+                <input v-if="editableColumn(columnIndex) === null" class="cell-input" disabled :aria-label="`${column.name} 不可编辑`" />
+                <input
+                  v-else-if="editableColumn(columnIndex)!.autoIncrement"
+                  class="cell-input" disabled placeholder="自动生成" :aria-label="`${column.name} 自动生成`"
+                />
+                <input
+                  v-else
+                  class="cell-input mono"
+                  :value="inputs[columnIndex] ?? ''"
+                  :placeholder="editableColumn(columnIndex)!.primaryKey ? '主键必填' : editableColumn(columnIndex)!.nullable ? '留空=默认' : '必填'"
+                  :aria-label="`新增行 ${column.name}`"
+                  @input="setNewRowValue(newRowIndex, columnIndex, ($event.target as HTMLInputElement).value)"
+                />
               </td>
             </tr>
-            <tr v-if="rows.length === 0">
+            <tr v-for="(row, rowIndex) in rows" :key="`${page}-${rowIndex}`" :class="{ 'row-selected': selectedRows.has(rowIndex), 'row-deleted': isEditableResult && isRowDeleted(rowIndex) }">
+              <th scope="row" class="row-number-cell">
+                <input type="checkbox" :checked="selectedRows.has(rowIndex)" :disabled="isEditableResult && isRowDeleted(rowIndex)" :aria-label="`选择第 ${(page - 1) * pageSize + rowIndex + 1} 行`" @change="toggleRow(rowIndex)" />
+                <span class="mono">{{ (page - 1) * pageSize + rowIndex + 1 }}</span>
+              </th>
+              <td
+                v-for="(value, columnIndex) in row"
+                :key="`${rowIndex}-${columnIndex}`"
+                :class="{
+                  'cell-selected': selectedCell?.row === rowIndex && selectedCell.column === columnIndex,
+                  'cell-edited': isEditableResult && isCellEdited(rowIndex, columnIndex),
+                }"
+                :data-label="columns[columnIndex].name"
+                :title="displayValue(isEditableResult ? cellDisplay(rowIndex, columnIndex) : value)"
+                @click="selectedCell = { row: rowIndex, column: columnIndex }"
+                @dblclick="beginEdit(rowIndex, columnIndex)"
+              >
+                <input
+                  v-if="isEditing(rowIndex, columnIndex)"
+                  :ref="(element) => { if (element) (element as HTMLInputElement).focus() }"
+                  v-model="editDraft"
+                  class="cell-input mono cell-editing-input"
+                  :aria-label="`编辑 ${columns[columnIndex].name}`"
+                  @keydown.enter.prevent="commitEdit()"
+                  @keydown.esc.prevent="cancelEdit()"
+                  @blur="commitEdit()"
+                />
+                <template v-else-if="isEditableResult">
+                  <span v-if="cellDisplay(rowIndex, columnIndex) === null" class="null-value mono">NULL</span>
+                  <span v-else-if="cellDisplay(rowIndex, columnIndex) === ''" class="empty-value">空字符串</span>
+                  <span v-else class="cell-value mono">{{ displayValue(cellDisplay(rowIndex, columnIndex)) }}</span>
+                </template>
+                <template v-else>
+                  <span v-if="value === null" class="null-value mono">NULL</span>
+                  <span v-else-if="value === ''" class="empty-value">空字符串</span>
+                  <span v-else class="cell-value mono">{{ displayValue(value) }}</span>
+                </template>
+              </td>
+            </tr>
+            <tr v-if="rows.length === 0 && newRows.length === 0">
               <td :colspan="columns.length + 1" class="empty-result">{{ hasResult ? '查询已执行，未返回数据行。' : '在编辑器中编写 SQL，然后选择“执行”。' }}</td>
             </tr>
           </tbody>
@@ -163,18 +234,19 @@ const changePage = (event: Event) => {
         <span v-else>总数未知</span>
         <span v-if="paging" class="loaded-note">正在加载…</span>
         <span class="loaded-note">数据库分页</span>
+        <span v-if="editDirty" class="edit-lock-note">有未保存更改，翻页前请先保存或放弃</span>
         <div class="page-controls">
           <label for="page-size">每页</label>
-          <select id="page-size" :value="pageSize" name="page-size" :disabled="paging" @change="emit('pageSizeChange', Number(($event.target as HTMLSelectElement).value))">
+          <select id="page-size" :value="pageSize" name="page-size" :disabled="paging || editDirty" @change="emit('pageSizeChange', Number(($event.target as HTMLSelectElement).value))">
             <option :value="10">10</option>
             <option :value="20">20</option>
             <option :value="50">50</option>
             <option :value="100">100</option>
           </select>
           <span class="page-size-unit">行</span>
-          <button type="button" class="icon-button" aria-label="上一页" :disabled="page <= 1 || paging" @click="emit('pageChange', page - 1)"><ChevronLeft :size="16" /></button>
+          <button type="button" class="icon-button" aria-label="上一页" :disabled="page <= 1 || paging || editDirty" @click="emit('pageChange', page - 1)"><ChevronLeft :size="16" /></button>
           <label class="visually-hidden" for="page-number">页码</label>
-          <input id="page-number" class="page-number mono" type="number" name="page-number" min="1" :max="totalPages ?? undefined" :value="page" :disabled="paging" @change="changePage" />
+          <input id="page-number" class="page-number mono" type="number" name="page-number" min="1" :max="totalPages ?? undefined" :value="page" :disabled="paging || editDirty" @change="changePage" />
           <span>/ {{ totalPages == null ? '?' : pageCount }} 页</span>
           <button type="button" class="icon-button" aria-label="下一页" :disabled="nextDisabled" @click="emit('pageChange', page + 1)"><ChevronRight :size="16" /></button>
         </div>
@@ -309,6 +381,74 @@ const changePage = (event: Event) => {
 .selection-count {
   color: var(--accent);
   font-size: 11px;
+}
+
+.edit-divider {
+  inline-size: 1px;
+  block-size: 18px;
+  background: var(--line);
+}
+
+.edit-lock-note {
+  color: #93651f;
+  font-size: 10px;
+}
+
+.row-new td {
+  background: #fbfaf4 !important;
+}
+
+.new-row-marker {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.new-badge {
+  color: #93651f;
+  font-size: 9px;
+}
+
+.row-invalid td {
+  box-shadow: inset 0 0 0 1px #d8a13a;
+}
+
+.row-deleted td,
+.row-deleted .row-number-cell {
+  color: #a5ada9 !important;
+  background: #f4f5f4 !important;
+  text-decoration: line-through;
+}
+
+.cell-edited {
+  background: #fdf6e3 !important;
+  box-shadow: inset 0 0 0 1px #d8a13a;
+}
+
+.cell-input {
+  inline-size: 100%;
+  min-block-size: 20px;
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--ink);
+  background: #ffffff;
+  font-size: 10px;
+}
+
+.cell-input:disabled {
+  color: #b6bdb9;
+  background: #f6f7f6;
+}
+
+.cell-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.cell-editing-input {
+  display: block;
 }
 
 .result-summary {

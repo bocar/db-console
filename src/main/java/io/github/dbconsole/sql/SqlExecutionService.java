@@ -106,12 +106,14 @@ public class SqlExecutionService {
     }
     if (!script && statement.kind() == StatementKind.SELECT) {
       RunningQuery running = runningQueries.register(sessionToken, source.id());
-      return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
-          new StatementExecution.ExecutionRequest(
-              source, sessionToken, transactionConnection, running, statement,
-              request.sql(),
-              new StatementExecution.PageRequest(1, properties.execution().defaultPageSize()),
-              !script)));
+      return auditExecution(source, request.sql(), username,
+          () -> statementExecution.execute(
+              new StatementExecution.ExecutionRequest(
+                  source, sessionToken, transactionConnection, running, statement,
+                  request.sql(),
+                  new StatementExecution.PageRequest(1, properties.execution().defaultPageSize()),
+                  !script,
+                  true)));
     }
     if (confirmations.check(
             sessionToken, source.id(), source.environment(), statement,
@@ -124,7 +126,7 @@ public class SqlExecutionService {
     return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
         new StatementExecution.ExecutionRequest(
             source, sessionToken, transactionConnection, running, statement,
-            request.sql(), null, !script)));
+            request.sql(), null, !script, false)));
   }
 
   /** 取消当前登录会话在本数据源运行中的查询（F-14）；其他会话的查询不可见。 */
@@ -150,12 +152,15 @@ public class SqlExecutionService {
     }
     Connection transactionConnection = transactions.connectionFor(sessionToken, source.id());
     RunningQuery running = runningQueries.register(sessionToken, source.id());
-    return auditExecution(source, request.sql(), username, () -> statementExecution.execute(
-        new StatementExecution.ExecutionRequest(
-            source, sessionToken, transactionConnection, running, statement,
-            request.sql(),
-            new StatementExecution.PageRequest(request.page(), request.pageSize()),
-            false)));
+    // 分页不重复标记（F-11 翻页复用事务上下文、不新开连接；前端沿用首次执行的可编辑信息）
+    return auditExecution(source, request.sql(), username,
+        () -> statementExecution.execute(
+            new StatementExecution.ExecutionRequest(
+                source, sessionToken, transactionConnection, running, statement,
+                request.sql(),
+                new StatementExecution.PageRequest(request.page(), request.pageSize()),
+                false,
+                false)));
   }
 
   /**

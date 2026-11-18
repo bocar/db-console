@@ -123,9 +123,16 @@ public class TransactionManager {
    * 预校验与逐条执行两个入口共用，跨数据源事务沿用 connectionFor 的拒绝语义。
    */
   public void requireScriptAutoCommit(String sessionToken, String sourceId) {
+    requireNoOpenTransaction(sessionToken, sourceId, MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT);
+  }
+
+  /**
+   * 通用互斥守卫：需要独立自动提交/短事务连接的执行入口（F-13 脚本、F-17 结果编辑保存）
+   * 在存在未提交手动事务时拒绝；跨数据源事务沿用 connectionFor 的拒绝语义。
+   */
+  public void requireNoOpenTransaction(String sessionToken, String sourceId, String message) {
     if (connectionFor(sessionToken, sourceId) != null) {
-      throw new TransactionStateException(
-          CODE_TRANSACTION_OPEN, MESSAGE_SCRIPT_REQUIRES_AUTO_COMMIT);
+      throw new TransactionStateException(CODE_TRANSACTION_OPEN, message);
     }
   }
 

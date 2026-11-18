@@ -73,7 +73,11 @@ public final class ConfirmationService {
     return hmac(message(sessionToken, sourceId, sql));
   }
 
-  boolean verify(String sessionToken, String sourceId, String sql, String token) {
+  /**
+   * 校验确认凭据（F-09）：脚本预校验（F-13）与结果编辑保存（F-17）在跨包流程中复用，
+   * 绑定不变式与单语句路径完全一致。
+   */
+  public boolean verify(String sessionToken, String sourceId, String sql, String token) {
     if (token == null || token.isBlank()) {
       return false;
     }

@@ -30,8 +30,11 @@ public class SqlConfig {
       TransactionManager transactions,
       RunningQueryRegistry runningQueries,
       HistoryService history,
-      DbConsoleProperties properties) {
-    return new StatementExecution(connections, transactions, runningQueries, history, properties);
+      DbConsoleProperties properties,
+      TableStructureService tableStructures) {
+    return new StatementExecution(
+        connections, transactions, runningQueries, history, properties,
+        new EditableResultMarker(tableStructures));
   }
 
   @Bean

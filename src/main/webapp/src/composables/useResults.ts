@@ -66,6 +66,18 @@ export function useResults() {
     const requested = Math.max(1, Math.floor(target))
     const targetPage = lastPage == null ? requested : Math.min(requested, Math.max(1, lastPage))
     if (targetPage === page.value && size === pageSize.value) return
+    await fetchPage(sourceId, sql, targetPage, size)
+  }
+
+  /** 强制重取当前页（F-17 保存/放弃后回显）：绕过同页去重。 */
+  async function reload(): Promise<void> {
+    const sourceId = currentSourceId.value
+    const sql = currentSql.value
+    if (!queryResult.value || !sourceId || !sql || isPaging.value) return
+    await fetchPage(sourceId, sql, page.value, pageSize.value)
+  }
+
+  async function fetchPage(sourceId: string, sql: string, targetPage: number, size: number): Promise<void> {
     const serial = ++requestSerial
     isPaging.value = true
     try {
@@ -76,7 +88,12 @@ export function useResults() {
         toast.notify('查询已取消，本次翻页未完成。')
         return
       }
-      showQuery(result)
+      // 同一查询的后续页不携带可编辑信息（F-11 翻页不重复标记），沿用首次执行的标记
+      const withEditable =
+        result.editable || !queryResult.value?.editable
+          ? result
+          : { ...result, editable: queryResult.value.editable }
+      showQuery(withEditable)
     } catch (error) {
       if (serial === requestSerial) {
         toast.notify(error instanceof Error ? `分页失败：${error.message}` : '分页失败。')
@@ -112,10 +129,12 @@ export function useResults() {
     visibleRows,
     visibleColumns,
     elapsedMs,
+    currentSourceId,
     showQuery,
     showUpdate,
     changePage,
     changePageSize,
+    reload,
     reset,
   }
 }

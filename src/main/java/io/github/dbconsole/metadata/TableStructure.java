@@ -16,7 +16,16 @@ public record TableStructure(
       boolean nullable,
       String defaultValue,
       boolean primaryKey,
-      String comment) {}
+      String comment,
+      boolean autoIncrement) {
+
+    /** 对象树等不需要自增标志的既有构造位（F-17 之前的行为）。 */
+    public ColumnDefinition(
+        String name, String type, boolean nullable, String defaultValue,
+        boolean primaryKey, String comment) {
+      this(name, type, nullable, defaultValue, primaryKey, comment, false);
+    }
+  }
 
   public record IndexDefinition(String name, boolean unique, List<String> columns) {}
 

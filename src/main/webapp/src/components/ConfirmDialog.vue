@@ -9,6 +9,8 @@ const props = defineProps<{
   environment: string
   implicitCommit: boolean
   reasonText?: string
+  /** 覆盖底部固定提交提示（F-17 批次保存用独立短事务，语义与单语句默认文案不同）。 */
+  commitWarning?: string
 }>()
 
 const emit = defineEmits<{ confirm: []; cancel: [] }>()
@@ -43,7 +45,8 @@ defineExpose({ open })
       <pre class="sql-preview mono">{{ sql }}</pre>
       <div class="commit-warning" :class="{ implicit: implicitCommit }">
         <LockKeyhole :size="15" />
-        <p v-if="implicitCommit">此语句会触发隐式提交。确认后将在独立连接执行，成功即生效，不能随当前事务回滚。</p>
+        <p v-if="commitWarning">{{ commitWarning }}</p>
+        <p v-else-if="implicitCommit">此语句会触发隐式提交。确认后将在独立连接执行，成功即生效，不能随当前事务回滚。</p>
         <p v-else>此操作将加入当前手动事务。执行成功后仍需提交；如需撤销，请使用回滚。</p>
       </div>
       <div class="dialog-actions">

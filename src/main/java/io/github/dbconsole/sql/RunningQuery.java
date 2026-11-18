@@ -49,6 +49,16 @@ public final class RunningQuery {
     return cancelRequested;
   }
 
+  /** 挂载当前 JDBC 语句以支持取消；F-17 结果编辑批次执行在 resultedit 包内复用。 */
+  public void attachForBatch(Statement jdbcStatement) {
+    attach(jdbcStatement);
+  }
+
+  /** 取消意图探测（F-17 批次在语句间检查，收到即停止后续语句）。 */
+  public boolean cancelRequested() {
+    return isCancelRequested();
+  }
+
   Statement statement() {
     return statement;
   }

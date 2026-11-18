@@ -5,6 +5,8 @@ URL.createObjectURL = () => 'blob:mock'
 URL.revokeObjectURL = () => {}
 import { describe, expect, it } from 'vitest'
 import ResultPanel from './ResultPanel.vue'
+import { API_CLIENT_KEY } from '../api/client'
+import { fakeApiClient } from '../api/test-support'
 import type { QueryColumn, QueryRow, QueryValue, UpdateResult } from '../types'
 
 const columns: QueryColumn[] = [
@@ -33,6 +35,8 @@ function mountExportPanel(overrides: Record<string, unknown> = {}) {
       truncated: false,
       ...overrides,
     },
+    // F-17：ResultPanel 经 useResultEditing 依赖 ApiClient 注入
+    global: { provide: { [API_CLIENT_KEY]: fakeApiClient() } },
   })
 }
 

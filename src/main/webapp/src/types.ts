@@ -78,6 +78,26 @@ export interface QueryResult {
   hasNextPage?: boolean | null
   totalRows?: number | null
   totalPages?: number | null
+  /** 可编辑结果信息（F-17）；缺失表示整体只读。首次执行携带，翻页沿用。 */
+  editable?: EditableInfo | null
+}
+
+/** 可编辑结果中单个结果列对应的表列定义（F-17）。 */
+export interface EditableColumn {
+  name: string
+  type: string
+  nullable: boolean
+  defaultValue: string | null
+  autoIncrement: boolean
+  primaryKey: boolean
+}
+
+/** 可编辑结果信息（F-17）：来源表限定名、主键列组与按结果列位置的表列映射。 */
+export interface EditableInfo {
+  tableParts: string[]
+  primaryKeys: string[]
+  /** 与结果列一一对应；null = 表达式或重名列，只读。 */
+  columns: (EditableColumn | null)[]
 }
 
 export interface UpdateResult {
@@ -197,3 +217,35 @@ export interface ScriptStatementState {
   queryResult: QueryResult | null
   message: string
 }
+
+/** 结果编辑保存的单元格值（F-17）：null 为 SQL NULL；空串不传输（留空即省略/置空）。 */
+export type ResultEditValue = string | number | boolean | null
+
+/** 结果编辑保存请求（F-17 / GLOSSARY：暂存更改）。 */
+export interface ResultEditRequest {
+  sourceId: string
+  tableParts: string[]
+  deletes: { key: Record<string, ResultEditValue> }[]
+  updates: { key: Record<string, ResultEditValue>; set: Record<string, ResultEditValue> }[]
+  inserts: { values: Record<string, ResultEditValue> }[]
+  /** 与语句按序对应的确认凭据；无需确认的语句位为 null。 */
+  confirmationTokens?: (string | null)[] | null
+}
+
+/** 结果编辑确认预览的单条语句（F-17）。 */
+export interface ResultEditStatementPreview {
+  index: number
+  section: 'DELETE' | 'UPDATE' | 'INSERT'
+  changeIndex: number
+  sql: string
+  params: ResultEditValue[]
+  reason: ConfirmationRequired['reason'] | null
+  confirmationToken: string | null
+}
+
+/** 结果编辑保存响应（F-17）。 */
+export type ResultEditResponse =
+  | { kind: 'RESULT_EDIT_APPLIED'; statements: { index: number; section: string; changeIndex: number; affectedRows: number | null }[]; elapsedMs: number }
+  | { kind: 'RESULT_EDIT_FAILED'; section: string | null; changeIndex: number; message: string; elapsedMs: number }
+  | { kind: 'RESULT_EDIT_CONFIRMATION'; statements: ResultEditStatementPreview[] }
+  | { kind: 'UNKNOWN_OUTCOME'; message: string }

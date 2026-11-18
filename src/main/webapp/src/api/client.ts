@@ -8,6 +8,8 @@ import type {
   ExecutionOutcome,
   HistoryEntry,
   QueryResult,
+  ResultEditRequest,
+  ResultEditResponse,
   ScriptAnalyzeResult,
   SessionInfo,
   TableDefinition,
@@ -44,6 +46,10 @@ export interface ApiClient {
     analyze(sourceId: string, filename: string, content: string): Promise<ScriptAnalyzeResult>
     executeStatement(sourceId: string, sql: string, confirmationToken?: string): Promise<ExecutionOutcome | ConfirmationRequired | UnknownOutcome>
     recordRun(sourceId: string, scriptId: string, durationMs: number): Promise<void>
+  }
+  /** 结果编辑保存（F-17）：未确认时返回语句预览与凭据，确认后单一短事务提交。 */
+  resultEdit: {
+    save(request: ResultEditRequest): Promise<ResultEditResponse>
   }
   transaction: {
     begin(sourceId: string): Promise<TransactionStatus>

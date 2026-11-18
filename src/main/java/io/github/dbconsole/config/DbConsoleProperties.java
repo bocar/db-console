@@ -18,12 +18,14 @@ public record DbConsoleProperties(
     @NotNull @Valid TransactionProperties transaction,
     @NotNull @Valid AuditProperties audit,
     @Valid ScriptProperties script,
+    @Valid ResultEditProperties resultEdit,
     @Valid List<DataSourceProperties> dataSources) {
 
-  /** 构造期收口缺省：script 未配置时取默认值，dataSources 未配置时为空列表（F-13）。 */
+  /** 构造期收口缺省：script/resultEdit 未配置时取默认值，dataSources 未配置时为空列表。 */
   public DbConsoleProperties {
     dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);
     script = script == null ? ScriptProperties.defaults() : script;
+    resultEdit = resultEdit == null ? ResultEditProperties.defaults() : resultEdit;
     long distinctIds = dataSources.stream().map(DataSourceProperties::id).distinct().count();
     if (distinctIds != dataSources.size()) {
       throw new IllegalArgumentException("Datasource identifiers must be unique");
@@ -60,6 +62,16 @@ public record DbConsoleProperties(
 
     public static ScriptProperties defaults() {
       return new ScriptProperties(DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_STATEMENTS);
+    }
+  }
+
+  /** 结果编辑保存限制（F-17）：单次保存变更数上限；配置缺省时取默认值。 */
+  public record ResultEditProperties(@Positive int maxChangesPerSave) {
+
+    private static final int DEFAULT_MAX_CHANGES_PER_SAVE = 200;
+
+    public static ResultEditProperties defaults() {
+      return new ResultEditProperties(DEFAULT_MAX_CHANGES_PER_SAVE);
     }
   }
 

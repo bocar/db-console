@@ -10,6 +10,10 @@ import type {
   QueryColumn,
   QueryResult,
   QueryRow,
+  ResultEditRequest,
+  ResultEditResponse,
+  ResultEditStatementPreview,
+  ResultEditValue,
   ScriptAnalyzeResult,
   ScriptStatementError,
   ScriptStatementPlan,
@@ -264,6 +268,61 @@ export class MockApiClient implements ApiClient {
         },
         ...this.historyEntries,
       ]
+    },
+  }
+
+  resultEdit = {
+    // F-17 mock：无确认令牌且含写变更 → 返回预览与假令牌；带令牌 → 视为整批提交成功
+    save: async (request: ResultEditRequest): Promise<ResultEditResponse> => {
+      this.requireSource(request.sourceId)
+      const changeCount = request.deletes.length + request.updates.length + request.inserts.length
+      if (changeCount === 0) {
+        throw new ApiClientError('NO_CHANGES', '没有可保存的变更', 422)
+      }
+      const statements: ResultEditStatementPreview[] = []
+      let index = 0
+      const push = (
+        section: 'DELETE' | 'UPDATE' | 'INSERT',
+        changeIndex: number,
+        params: ResultEditValue[],
+      ): void => {
+        statements.push({
+          index,
+          section,
+          changeIndex,
+          sql: `-- mock ${section} on ${request.tableParts.join('.')}`,
+          params,
+          reason: null,
+          confirmationToken: `mock-token-${index}`,
+        })
+        index++
+      }
+      request.deletes.forEach((change, changeIndex) =>
+        push('DELETE', changeIndex, Object.values(change.key)))
+      request.updates.forEach((change, changeIndex) =>
+        push('UPDATE', changeIndex, [...Object.values(change.set), ...Object.values(change.key)]))
+      request.inserts.forEach((change, changeIndex) =>
+        push('INSERT', changeIndex, Object.values(change.values)))
+      const needsConfirmation = request.confirmationTokens == null
+      if (needsConfirmation) {
+        return {
+          kind: 'RESULT_EDIT_CONFIRMATION',
+          statements: statements.map((statement) => ({
+            ...statement,
+            reason: 'PRODUCTION_WRITE' as const,
+          })),
+        }
+      }
+      return {
+        kind: 'RESULT_EDIT_APPLIED',
+        statements: statements.map((statement) => ({
+          index: statement.index,
+          section: statement.section,
+          changeIndex: statement.changeIndex,
+          affectedRows: 1,
+        })),
+        elapsedMs: 3,
+      }
     },
   }
 

@@ -14,6 +14,7 @@ import { useDataSources } from '../composables/useDataSources'
 import { useExecution } from '../composables/useExecution'
 import { useManualTransaction } from '../composables/useManualTransaction'
 import { useObjectTree } from '../composables/useObjectTree'
+import { useResultEditing } from '../composables/useResultEditing'
 import { useResults } from '../composables/useResults'
 import { useSession } from '../composables/useSession'
 import { useSqlHistory } from '../composables/useSqlHistory'
@@ -51,9 +52,13 @@ const execution = useExecution({
   },
 })
 const { sql, isRunning, canceling, pendingSql, pendingConfirmation, execute, confirmExecution, cancelExecution, cancelQuery } = execution
+// 结果表格编辑（F-17）：脏状态守卫 + 批次确认弹窗
+const resultEditing = useResultEditing()
+const { blockedByPendingChanges, pendingBatch, confirmBatch, cancelBatch } = resultEditing
 
 const editorRef = ref<EditorHandle | null>(null)
 const confirmDialog = ref<ConfirmHandle | null>(null)
+const batchConfirmDialog = ref<ConfirmHandle | null>(null)
 const historyDialog = ref<HistoryHandle | null>(null)
 const mobileSidebarOpen = ref(false)
 const editorSize = ref(43)
@@ -94,8 +99,42 @@ watch(pendingConfirmation, (confirmation) => {
   if (confirmation) confirmDialog.value?.open()
 })
 
+const batchSqlText = computed(() => {
+  const batch = pendingBatch.value
+  if (!batch) return ''
+  return batch.statements
+    .map((statement) => {
+      const risk = statement.reason
+        ? `【${confirmationReasonText(statement.reason)}】\n`
+        : ''
+      return `${risk}${statement.sql}\n-- 参数: ${JSON.stringify(statement.params)}`
+    })
+    .join('\n;\n')
+})
+
+watch(pendingBatch, (batch) => {
+  if (batch) batchConfirmDialog.value?.open()
+})
+
 const executeFromToolbar = () => {
+  if (blockedByPendingChanges()) return
   void execute(editorRef.value?.executionText() ?? sql.value)
+}
+
+/** 编辑器快捷键执行（Ctrl ↵）与工具栏同守卫：暂存更改存在时先保存或放弃（F-17/Q7）。 */
+const handleEditorExecute = (text: string) => {
+  if (blockedByPendingChanges()) return
+  void execute(text)
+}
+
+const changePageWithGuard = (target: number) => {
+  if (blockedByPendingChanges()) return
+  void results.changePage(target)
+}
+
+const changePageSizeWithGuard = (size: number) => {
+  if (blockedByPendingChanges()) return
+  void results.changePageSize(size)
 }
 
 const commitTransaction = () => {
@@ -117,6 +156,7 @@ const changeSource = (id: string) => {
   const current = selectedSource.value
   if (!current || id === current.id) return
   if (transaction.blockedByOpenTransaction()) return
+  if (blockedByPendingChanges()) return
   dataSources.selectSource(id)
   results.reset()
   mobileSidebarOpen.value = false
@@ -161,6 +201,7 @@ const clearHistory = () => {
 }
 
 const newQuery = () => {
+  if (blockedByPendingChanges()) return
   sql.value = ''
   results.reset()
   nextTick(() => editorRef.value?.focusEditor())
@@ -256,7 +297,7 @@ onUnmounted(() => {
             <button type="button" class="button clear-button" @click="clearEditor"><Eraser :size="14" />清空</button>
           </div>
           <div class="editor-host">
-            <SqlEditor ref="editorRef" v-model="sql" @execute="execute" />
+            <SqlEditor ref="editorRef" v-model="sql" @execute="handleEditorExecute" />
           </div>
           <div class="transaction-bar" :class="{ 'has-pending': transactionActive }">
             <GitCommitHorizontal :size="16" />
@@ -308,8 +349,8 @@ onUnmounted(() => {
           :update-info="updateResult ?? undefined"
           :truncated="queryResult?.truncated ?? false"
           @tab-change="activeTab = $event"
-          @page-change="results.changePage($event)"
-          @page-size-change="results.changePageSize($event)"
+          @page-change="changePageWithGuard"
+          @page-size-change="changePageSizeWithGuard"
           @notify="notify"
         />
       </main>
@@ -331,6 +372,18 @@ onUnmounted(() => {
       :reason-text="pendingConfirmation ? confirmationReasonText(pendingConfirmation.reason) : undefined"
       @confirm="confirmExecution"
       @cancel="cancelExecution"
+    />
+    <ConfirmDialog
+      ref="batchConfirmDialog"
+      title="确认提交表格更改？"
+      :sql="batchSqlText"
+      :source-name="selectedSource?.displayName ?? ''"
+      :environment="confirmEnvironment"
+      :implicit-commit="false"
+      reason-text="以下语句将按删除、更新、新增的顺序在单一短事务内执行，任一失败整体回滚。确认只对当前这批语句有效。"
+      commit-warning="确认后将在独立连接的单一短事务内执行：全部成功一起生效，任一失败整体回滚。"
+      @confirm="confirmBatch"
+      @cancel="cancelBatch"
     />
     <HistoryDialog ref="historyDialog" :entries="currentHistory" :source-name="selectedSource?.displayName ?? ''" @load="loadHistoryEntry" @clear="clearHistory" />
     <ToastMessage :message="toastMessage" />

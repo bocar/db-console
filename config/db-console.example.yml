@@ -21,6 +21,8 @@ db-console:
   script:
     max-file-bytes: 5242880
     max-statements: 1000
+  result-edit:
+    max-changes-per-save: 200
   audit:
     directory: ./audit
     retention: P30D

@@ -8,6 +8,8 @@ import type {
   ExecutionOutcome,
   HistoryEntry,
   QueryResult,
+  ResultEditRequest,
+  ResultEditResponse,
   ScriptAnalyzeResult,
   SessionInfo,
   TableDefinition,
@@ -37,6 +39,11 @@ const API_ERROR_CODES = [
   'SCRIPT_TOO_LARGE',
   'SCRIPT_TOO_MANY_STATEMENTS',
   'SCRIPT_RUN_NOT_FOUND',
+  'TOO_MANY_CHANGES',
+  'NO_CHANGES',
+  'TABLE_UNREADABLE',
+  'NO_PRIMARY_KEY',
+  'INVALID_CHANGE',
 ] as const
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number]
@@ -183,6 +190,11 @@ export class HttpApiClient implements ApiClient {
         scriptId,
         durationMs,
       }),
+  }
+
+  resultEdit = {
+    save: (request: ResultEditRequest): Promise<ResultEditResponse> =>
+      this.request<ResultEditResponse>('POST', '/api/sql/result-edit/save', request),
   }
 
   transaction = {

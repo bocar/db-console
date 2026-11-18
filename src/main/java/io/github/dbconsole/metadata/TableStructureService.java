@@ -1,5 +1,8 @@
 package io.github.dbconsole.metadata;
 
+import io.github.dbconsole.config.DbConsoleProperties.CompatibilityMode;
+import io.github.dbconsole.config.DbConsoleProperties.DatabaseType;
+import io.github.dbconsole.dialect.DialectFamily;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
@@ -11,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 /**
@@ -75,6 +79,101 @@ public class TableStructureService {
 
 
 
+  /** 轻量结构读取的命中结果：resolvedParts 为实际命中的大小写形态（语句生成须用它，DM8 大写存储）。 */
+  public record ResolvedColumnStructure(List<String> resolvedParts, TableStructure structure) {}
+
+  /**
+   * 轻量单表结构（F-17）·保存路径：自开连接，只取列与主键（不查索引、外键与表注释），
+   * 返回命中大小写形态与结构——生成 SQL 的标识符必须用命中形态（引号标识符在 DM8/Oracle
+   * 系大小写敏感）。限定名部分由调用方给出（已去引号）：1 段=表，2 段=schema.表（MySQL 系
+   * 按 catalog.表理解，取 catalog 位），3 段=catalog.schema.表；大小写按原样、全大写、
+   * 全小写依次尝试（DM8 存储为大写），均无结果返回空。
+   */
+  public Optional<ResolvedColumnStructure> resolveColumnStructure(
+      String sourceId, DatabaseType databaseType, CompatibilityMode compatibilityMode,
+      List<String> tableParts) {
+    if (tableParts == null || tableParts.isEmpty()) {
+      return Optional.empty();
+    }
+    ResolvedDataSource source = registry.resolve(sourceId);
+    try (Connection connection = connections.open(source)) {
+      return columnStructure(
+          connection.getMetaData(),
+          connection.getCatalog(),
+          connection.getSchema(),
+          databaseType,
+          compatibilityMode,
+          tableParts);
+    } catch (SQLException exception) {
+      throw new MetadataException("表结构读取失败：" + exception.getMessage(), exception);
+    }
+  }
+
+  /** 搭用已有连接的轻量结构读取（F-17 可编辑标记：不新开连接）。 */
+  public Optional<TableStructure> columnStructure(
+      Connection connection, DatabaseType databaseType, CompatibilityMode compatibilityMode,
+      List<String> tableParts) {
+    if (tableParts == null || tableParts.isEmpty()) {
+      return Optional.empty();
+    }
+    try {
+      return columnStructure(
+              connection.getMetaData(),
+              connection.getCatalog(),
+              connection.getSchema(),
+              databaseType,
+              compatibilityMode,
+              tableParts)
+          .map(ResolvedColumnStructure::structure);
+    } catch (SQLException exception) {
+      throw new MetadataException("表结构读取失败：" + exception.getMessage(), exception);
+    }
+  }
+
+  private Optional<ResolvedColumnStructure> columnStructure(
+      DatabaseMetaData meta,
+      String connectionCatalog,
+      String connectionSchema,
+      DatabaseType databaseType,
+      CompatibilityMode compatibilityMode,
+      List<String> tableParts) throws SQLException {
+    boolean mysqlFamily = DialectFamily.isMysqlFamily(databaseType, compatibilityMode);
+    for (List<String> parts :
+        List.of(tableParts, upperCased(tableParts), lowerCased(tableParts))) {
+      String table = parts.get(parts.size() - 1);
+      String qualifier = parts.size() >= 2 ? parts.get(parts.size() - 2) : null;
+      String catalog = parts.size() >= 3 ? parts.get(0) : connectionCatalog;
+      String schema = connectionSchema;
+      if (qualifier != null) {
+        if (mysqlFamily) {
+          catalog = qualifier;
+        } else {
+          schema = qualifier;
+        }
+      }
+      Map<String, TableStructure.ColumnDefinition> columns =
+          loadColumns(meta, catalog, schema, table);
+      if (columns.isEmpty()) {
+        continue;
+      }
+      markPrimaryKeys(meta, catalog, schema, table, columns);
+      return Optional.of(
+          new ResolvedColumnStructure(
+              List.copyOf(parts),
+              new TableStructure(
+                  table, "", new ArrayList<>(columns.values()), List.of(), List.of())));
+    }
+    return Optional.empty();
+  }
+
+  private static List<String> upperCased(List<String> parts) {
+    return parts.stream().map(String::toUpperCase).toList();
+  }
+
+  private static List<String> lowerCased(List<String> parts) {
+    return parts.stream().map(String::toLowerCase).toList();
+  }
+
   private TableStructure structure(
       DatabaseMetaData meta, String catalog, String schema, String tableName)
       throws SQLException {
@@ -93,6 +192,7 @@ public class TableStructureService {
     try (ResultSet rs = meta.getColumns(catalog, schema, tableName, "%")) {
       while (rs.next()) {
         String comment = rs.getString("REMARKS");
+        String autoIncrement = rs.getString("IS_AUTOINCREMENT");
         columns.put(
             rs.getString("COLUMN_NAME"),
             new TableStructure.ColumnDefinition(
@@ -101,7 +201,8 @@ public class TableStructureService {
                 rs.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls,
                 rs.getString("COLUMN_DEF"),
                 false,
-                comment == null ? "" : comment));
+                comment == null ? "" : comment,
+                "YES".equalsIgnoreCase(autoIncrement)));
       }
     }
     return columns;

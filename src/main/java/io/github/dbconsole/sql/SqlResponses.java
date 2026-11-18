@@ -19,7 +19,8 @@ public sealed interface SqlResponses {
       Integer pageSize,
       Boolean hasNextPage,
       Long totalRows,
-      Integer totalPages)
+      Integer totalPages,
+      EditableInfo editable)
       implements SqlResponses {
 
     @Override
@@ -29,22 +30,41 @@ public sealed interface SqlResponses {
 
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated) {
-      this("QUERY", columns, rows, elapsedMs, truncated, null, null, null, null, null);
+      this("QUERY", columns, rows, elapsedMs, truncated, null, null, null, null, null, null);
     }
 
     /** 行集合级结果（mapper 层）：仅携带分页探测标记，页身份与总数由执行层补充。 */
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated, boolean hasNextPage) {
-      this("QUERY", columns, rows, elapsedMs, truncated, null, null, hasNextPage, null, null);
+      this("QUERY", columns, rows, elapsedMs, truncated, null, null, hasNextPage, null, null, null);
     }
 
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated, int page, int pageSize, boolean hasNextPage,
         Long totalRows, Integer totalPages) {
       this("QUERY", columns, rows, elapsedMs, truncated, page, pageSize, hasNextPage,
-          totalRows, totalPages);
+          totalRows, totalPages, null);
+    }
+
+    /** 可编辑结果标记（F-17）返回带 editable 信息的同值副本。 */
+    public QueryResult withEditable(EditableInfo editable) {
+      return new QueryResult(kind, columns, rows, elapsedMs, truncated, page, pageSize,
+          hasNextPage, totalRows, totalPages, editable);
     }
   }
+
+  /**
+   * 可编辑结果信息（F-17 / GLOSSARY：可编辑结果）：来源表限定名部分（去引号）、
+   * 主键列名组，以及与查询结果列按位置一一对应的表列定义（null = 表达式或重名列，只读）。
+   * 缺失（null）表示该查询结果整体只读。
+   */
+  record EditableInfo(
+      List<String> tableParts, List<String> primaryKeys, List<EditableColumn> columns) {}
+
+  /** 可编辑结果中单个结果列对应的表列定义。 */
+  record EditableColumn(
+      String name, String type, boolean nullable, String defaultValue,
+      boolean autoIncrement, boolean primaryKey) {}
 
   /** 变更结果：受影响行数（null=驱动未提供）；implicitCommitDdl 标识 DDL 语句。 */
   record UpdateResult(
