@@ -37,8 +37,9 @@ public class SqlConfig {
         new EditableResultMarker(tableStructures));
   }
 
+  /** 语句执行编舞：确认门、登记、审计、终态分类的唯一漏斗（全部执行形态经此）。 */
   @Bean
-  public SqlExecutionService sqlExecutionService(
+  public ExecutionOrchestrator executionOrchestrator(
       DataSourceRegistry registry,
       ConfirmationService confirmations,
       RunningQueryRegistry runningQueries,
@@ -46,23 +47,10 @@ public class SqlConfig {
       TableStructureService tableStructures,
       AuditService audit,
       DbConsoleProperties properties,
-      StatementExecution statementExecution) {
-    return new SqlExecutionService(
-        registry, confirmations, runningQueries, transactions, tableStructures, audit, properties,
-        statementExecution);
-  }
-
-  /** 语句执行编舞（F-17 深化第一笔）：确认门、登记、审计、终态分类的唯一漏斗。 */
-  @Bean
-  public ExecutionOrchestrator executionOrchestrator(
-      ConfirmationService confirmations,
-      RunningQueryRegistry runningQueries,
-      AuditService audit,
-      TransactionManager transactions,
-      DbConsoleProperties properties,
+      StatementExecution statementExecution,
       ConnectionFactory connections) {
     return new ExecutionOrchestrator(
-        confirmations, runningQueries, audit, transactions, properties,
-        new ResultEditExecutor(connections));
+        registry, confirmations, runningQueries, transactions, tableStructures, audit, properties,
+        statementExecution, new ResultEditExecutor(connections));
   }
 }

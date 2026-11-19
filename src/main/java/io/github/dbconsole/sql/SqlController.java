@@ -9,15 +9,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** SQL 执行接口（F-04/F-05）与查询取消接口（F-14）。 */
+/** SQL 执行接口（F-04/F-05）与查询取消接口（F-14）：构造执行形态交编舞。 */
 @RestController
 @RequestMapping("/api/sql")
 public class SqlController {
 
-  private final SqlExecutionService executionService;
+  private final ExecutionOrchestrator orchestrator;
 
-  public SqlController(SqlExecutionService executionService) {
-    this.executionService = executionService;
+  public SqlController(ExecutionOrchestrator orchestrator) {
+    this.orchestrator = orchestrator;
   }
 
   @PostMapping("/execute")
@@ -25,7 +25,10 @@ public class SqlController {
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @RequestAttribute(SessionAuthInterceptor.USERNAME_ATTRIBUTE) String username,
       @Valid @RequestBody SqlRequest request) {
-    return executionService.execute(sessionToken, username, request);
+    return orchestrator.run(
+        new ExecutionForm.WorkbenchQueryForm(
+            sessionToken, username, request.sourceId(), request.sql(),
+            request.confirmationToken()));
   }
 
   @PostMapping("/page")
@@ -33,7 +36,10 @@ public class SqlController {
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @RequestAttribute(SessionAuthInterceptor.USERNAME_ATTRIBUTE) String username,
       @Valid @RequestBody SqlPageRequest request) {
-    return executionService.page(sessionToken, username, request);
+    return orchestrator.run(
+        new ExecutionForm.PageForm(
+            sessionToken, username, request.sourceId(), request.sql(),
+            request.page(), request.pageSize()));
   }
 
   /** 取消当前登录会话在本数据源运行中的查询（F-14）。 */
@@ -41,6 +47,6 @@ public class SqlController {
   public CancelResponse cancel(
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @PathVariable String sourceId) {
-    return executionService.cancelRunningQuery(sessionToken, sourceId);
+    return orchestrator.cancelRunningQuery(sessionToken, sourceId);
   }
 }

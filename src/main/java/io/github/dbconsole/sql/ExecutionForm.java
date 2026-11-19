@@ -13,7 +13,26 @@ import java.util.List;
  * @param <R> 该形态的终态响应族（形状不跨形态合并）
  */
 public sealed interface ExecutionForm<R extends TerminalResponse>
-    permits ExecutionForm.EditBatchForm {
+    permits ExecutionForm.EditBatchForm, ExecutionForm.PageForm,
+        ExecutionForm.ScriptStatementForm, ExecutionForm.WorkbenchQueryForm {
+
+  /** 工作台首次执行（F-04）：SELECT 走首页分页 + 可编辑标记 + 历史；写语句走确认门。 */
+  record WorkbenchQueryForm(
+      String sessionToken, String username, String sourceId,
+      String sql, String confirmationToken)
+      implements ExecutionForm<SqlResponses> {}
+
+  /** 脚本单语句（F-13）：恒自动提交（与手动事务互斥）、不分页、不写会话历史。 */
+  record ScriptStatementForm(
+      String sessionToken, String username, String sourceId,
+      String sql, String confirmationToken)
+      implements ExecutionForm<SqlResponses> {}
+
+  /** 翻页取数（F-11）：仅只读查询，不重复标记、不写历史、不新开连接。 */
+  record PageForm(
+      String sessionToken, String username, String sourceId,
+      String sql, int page, int pageSize)
+      implements ExecutionForm<SqlResponses> {}
 
   /** 暂存更改批次（F-17）：无条件汇总确认、逐条凭据、独立短事务执行。 */
   record EditBatchForm(

@@ -34,17 +34,22 @@ public sealed interface SqlResponses extends TerminalResponse {
       this("QUERY", columns, rows, elapsedMs, truncated, null, null, null, null, null, null);
     }
 
-    /** 行集合级结果（mapper 层）：仅携带分页探测标记，页身份与总数由执行层补充。 */
+    /** 行集合级结果（mapper 层）：仅携带分页探测标记，页身份与总数由执行层以 wither 补充。 */
     public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
         boolean truncated, boolean hasNextPage) {
       this("QUERY", columns, rows, elapsedMs, truncated, null, null, hasNextPage, null, null, null);
     }
 
-    public QueryResult(List<QueryColumn> columns, List<List<Object>> rows, long elapsedMs,
-        boolean truncated, int page, int pageSize, boolean hasNextPage,
-        Long totalRows, Integer totalPages) {
-      this("QUERY", columns, rows, elapsedMs, truncated, page, pageSize, hasNextPage,
-          totalRows, totalPages, null);
+    /** 页身份补全（执行层）：同值副本追加页码与每页行数。 */
+    public QueryResult withPaging(int page, int pageSize) {
+      return new QueryResult(kind, columns, rows, elapsedMs, truncated, page, pageSize,
+          hasNextPage, totalRows, totalPages, editable);
+    }
+
+    /** 总数补全（执行层）：同值副本追加总行数与总页数。 */
+    public QueryResult withTotals(long totalRows, int totalPages) {
+      return new QueryResult(kind, columns, rows, elapsedMs, truncated, page, pageSize,
+          hasNextPage, totalRows, totalPages, editable);
     }
 
     /** 可编辑结果标记（F-17）返回带 editable 信息的同值副本。 */

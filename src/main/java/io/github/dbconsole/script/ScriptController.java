@@ -1,6 +1,7 @@
 package io.github.dbconsole.script;
 
-import io.github.dbconsole.sql.SqlExecutionService;
+import io.github.dbconsole.sql.ExecutionForm;
+import io.github.dbconsole.sql.ExecutionOrchestrator;
 import io.github.dbconsole.sql.SqlRequest;
 import io.github.dbconsole.sql.SqlResponses;
 import io.github.dbconsole.web.SessionAuthInterceptor;
@@ -18,15 +19,15 @@ public class ScriptController {
 
   private final ScriptAnalyzer scriptAnalyzer;
   private final ScriptService scriptService;
-  private final SqlExecutionService executionService;
+  private final ExecutionOrchestrator orchestrator;
 
   public ScriptController(
       ScriptAnalyzer scriptAnalyzer,
       ScriptService scriptService,
-      SqlExecutionService executionService) {
+      ExecutionOrchestrator orchestrator) {
     this.scriptAnalyzer = scriptAnalyzer;
     this.scriptService = scriptService;
-    this.executionService = executionService;
+    this.orchestrator = orchestrator;
   }
 
   /** 预校验：整份脚本任一条未通过即整体无效，逐条报告原因。 */
@@ -43,7 +44,10 @@ public class ScriptController {
       @RequestAttribute(SessionAuthInterceptor.SESSION_TOKEN_ATTRIBUTE) String sessionToken,
       @RequestAttribute(SessionAuthInterceptor.USERNAME_ATTRIBUTE) String username,
       @Valid @RequestBody SqlRequest request) {
-    return executionService.executeScriptStatement(sessionToken, username, request);
+    return orchestrator.run(
+        new ExecutionForm.ScriptStatementForm(
+            sessionToken, username, request.sourceId(), request.sql(),
+            request.confirmationToken()));
   }
 
   /** 汇总历史：完整执行结束的运行记录一条汇总（文件名 + 完整脚本 + 状态）。 */

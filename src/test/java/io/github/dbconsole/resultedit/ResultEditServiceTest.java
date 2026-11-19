@@ -64,9 +64,11 @@ class ResultEditServiceTest {
     // 真实编舞 + mock 执行 arm：策略测试经 run() 全链路，执行终态可控
     ExecutionOrchestrator orchestrator =
         new ExecutionOrchestrator(
-            confirmations,
+            registry, confirmations,
             new RunningQueryRegistry(properties.execution().maxConcurrency()),
-            audit, transactions, properties, executor);
+            transactions, tableStructures, audit, properties,
+            null, // 单语句 arm：批次形态不可达
+            executor);
     return new ResultEditService(registry, tableStructures, properties, orchestrator);
   }
 

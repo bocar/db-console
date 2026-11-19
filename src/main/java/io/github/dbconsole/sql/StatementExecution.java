@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * 连接归属（事务连接不关闭 / 自动提交连接必关）、并发槽位释放时机、取消意图先于驱动调用、
  * SQLException 终态分类（取消 / 超时 / 执行结果未知 / 执行失败）在此收口；
  * 服务端分页的派生表包装、+1 探测行与总数统计同样内化，调用方不学习这些约定。
- * SqlExecutionService 只做前置校验、执行确认分派、DESC 特例与审计包裹。
+ * 编舞（ExecutionOrchestrator）负责前置校验、确认分派与审计包裹，本类只管执行与取数。
  */
 class StatementExecution {
 
@@ -129,10 +129,7 @@ class StatementExecution {
         pageResult =
             QueryResultMapper.map(resultSet, properties.execution(), elapsedMs, page.pageSize());
       }
-      result =
-          new SqlResponses.QueryResult(pageResult.columns(), pageResult.rows(), elapsedMs,
-              pageResult.truncated(), page.page(), page.pageSize(), pageResult.hasNextPage(),
-              null, null);
+      result = pageResult.withPaging(page.page(), page.pageSize());
     } catch (SQLException exception) {
       if (result != null) {
         // 页结果已成形，仅语句收尾失败：返回已得数据，不误报失败
@@ -145,10 +142,7 @@ class StatementExecution {
     Long totalRows = countTotalRows(connection, source.id(), statementSql);
     if (totalRows != null) {
       int totalPages = PaginationSql.totalPages(totalRows, page.pageSize());
-      result =
-          new SqlResponses.QueryResult(result.columns(), result.rows(), result.elapsedMs(),
-              result.truncated(), result.page(), result.pageSize(), result.hasNextPage(),
-              totalRows, totalPages);
+      result = result.withTotals(totalRows, totalPages);
     }
     // 可编辑标记（F-17）：连接仍存活时完成，结构读取搭用同一连接
     if (request.markEditable()) {
