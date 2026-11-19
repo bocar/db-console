@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 class StatementExecution {
 
   private static final Logger log = LoggerFactory.getLogger(StatementExecution.class);
-  private static final int DRIVER_MESSAGE_LIMIT = 500;
+  static final int DRIVER_MESSAGE_LIMIT = 500;
 
   private final ConnectionFactory connections;
   private final TransactionManager transactions;
@@ -269,7 +269,7 @@ class StatementExecution {
   }
 
   /** 驱动消息面向用户可定位并截断防护；凭据不出现在驱动错误消息中。 */
-  private static String safeMessage(SQLException exception) {
+  static String safeMessage(SQLException exception) {
     String message = exception.getMessage();
     if (message == null || message.isBlank()) {
       return "数据库执行失败，原因未知";
@@ -279,7 +279,7 @@ class StatementExecution {
         : message;
   }
 
-  private static long elapsedMillisSince(long startedAt) {
+  static long elapsedMillisSince(long startedAt) {
     return (System.nanoTime() - startedAt) / 1_000_000;
   }
 }

@@ -121,18 +121,5 @@ public final class ResultEditSql {
     return " WHERE " + predicates;
   }
 
-  private static String qualified(
-      DatabaseType type, CompatibilityMode mode, List<String> tableParts) {
-    StringJoiner qualified = new StringJoiner(".");
-    for (String part : tableParts) {
-      qualified.add(quote(type, mode, part));
-    }
-    return qualified.toString();
-  }
 
-  private static String quote(DatabaseType type, CompatibilityMode mode, String identifier) {
-    char quote = DialectFamily.isMysqlFamily(type, mode) ? '`' : '"';
-    String doubled = String.valueOf(quote) + quote;
-    return quote + identifier.replace(String.valueOf(quote), doubled) + quote;
-  }
 }

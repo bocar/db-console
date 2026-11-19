@@ -51,7 +51,7 @@ class ResultEditExecutorTest {
     return new ResultEditExecutor.PlannedStatement(
         0,
         ResultEditSql.delete(
-            io.github.dbconsole.dialect.Dialect.of(DatabaseType.MYSQL, CompatibilityMode.NATIVE),
+            new io.github.dbconsole.dialect.Dialect(DatabaseType.MYSQL, CompatibilityMode.NATIVE),
             List.of("orders"), List.of("id"), List.of(id)));
   }
 
@@ -59,7 +59,7 @@ class ResultEditExecutorTest {
     return new ResultEditExecutor.PlannedStatement(
         0,
         ResultEditSql.update(
-            io.github.dbconsole.dialect.Dialect.of(DatabaseType.MYSQL, CompatibilityMode.NATIVE),
+            new io.github.dbconsole.dialect.Dialect(DatabaseType.MYSQL, CompatibilityMode.NATIVE),
             List.of("orders"), List.of("id"), List.of(id),
             List.of("name"), List.of(value)));
   }
@@ -155,7 +155,7 @@ class ResultEditExecutorTest {
         new ResultEditExecutor.PlannedStatement(
             0,
             ResultEditSql.update(
-                io.github.dbconsole.dialect.Dialect.of(DatabaseType.MYSQL, CompatibilityMode.NATIVE),
+                new io.github.dbconsole.dialect.Dialect(DatabaseType.MYSQL, CompatibilityMode.NATIVE),
                 List.of("orders"), List.of("id"), List.of(9),
                 List.of("note"), java.util.Arrays.asList((Object) null)));
 

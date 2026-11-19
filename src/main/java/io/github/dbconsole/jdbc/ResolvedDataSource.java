@@ -21,7 +21,7 @@ public record ResolvedDataSource(
 
   /** 方言值对象（F-17 深化）：方言知识（族判定/引用/分析器）的取用入口。 */
   public Dialect dialect() {
-    return Dialect.of(databaseType(), compatibilityMode());
+    return new Dialect(databaseType(), compatibilityMode());
   }
 
   @Override

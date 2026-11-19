@@ -12,10 +12,6 @@ import java.util.StringJoiner;
  */
 public record Dialect(DatabaseType type, CompatibilityMode mode) {
 
-  public static Dialect of(DatabaseType type, CompatibilityMode mode) {
-    return new Dialect(type, mode);
-  }
-
   /** MySQL 系（含 TiDB 与 MySQL 兼容模式）与其余（DM8/Oracle/SQL Server 系）之分。 */
   public boolean mysqlFamily() {
     return DialectFamily.isMysqlFamily(type, mode);

@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 public class ResultEditExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(ResultEditExecutor.class);
-  private static final int DRIVER_MESSAGE_LIMIT = 500;
 
   private final ConnectionFactory connections;
 
@@ -60,7 +59,7 @@ public class ResultEditExecutor {
         if (running.cancelRequested()) {
           rollbackQuietly(connection);
           log.warn("结果编辑保存被取消，整体回滚 sourceId={} elapsedMs={}",
-              source.id(), elapsedMillisSince(startedAt));
+              source.id(), StatementExecution.elapsedMillisSince(startedAt));
           return new ResultEditResponses.Unknown("保存已取消，写入结果未知，请核实数据库状态");
         }
         current = statement;
@@ -77,7 +76,7 @@ public class ResultEditExecutor {
               return new ResultEditResponses.Failed(
                   statement.section(), statement.changeIndex(),
                   "行不存在（可能已被删除或主键被他人修改），本次保存已整体回滚",
-                  elapsedMillisSince(startedAt));
+                  StatementExecution.elapsedMillisSince(startedAt));
             }
           }
           applied.add(
@@ -88,12 +87,12 @@ public class ResultEditExecutor {
       committing = true;
       connection.commit();
       log.info("结果编辑保存提交完成 sourceId={} statements={} elapsedMs={}",
-          source.id(), planned.size(), elapsedMillisSince(startedAt));
-      return new ResultEditResponses.Applied(applied, elapsedMillisSince(startedAt));
+          source.id(), planned.size(), StatementExecution.elapsedMillisSince(startedAt));
+      return new ResultEditResponses.Applied(applied, StatementExecution.elapsedMillisSince(startedAt));
     } catch (SQLException exception) {
       rollbackQuietly(connection);
       return classifyFailure(
-          source, exception, running, current, committing, elapsedMillisSince(startedAt));
+          source, exception, running, current, committing, StatementExecution.elapsedMillisSince(startedAt));
     } finally {
       if (connection != null) {
         try {
@@ -127,16 +126,16 @@ public class ResultEditExecutor {
     if (outcomeUnknown) {
       log.warn("结果编辑保存结果未知 sourceId={} sqlState={} elapsedMs={}",
           source.id(), exception.getSQLState(), elapsedMs);
-      return new ResultEditResponses.Unknown(safeMessage(exception));
+      return new ResultEditResponses.Unknown(StatementExecution.safeMessage(exception));
     }
     log.warn("结果编辑保存失败并回滚 sourceId={} sqlState={} elapsedMs={}",
         source.id(), exception.getSQLState(), elapsedMs);
     if (committing || current == null) {
       return new ResultEditResponses.Failed(
-          null, -1, safeMessage(exception), elapsedMs);
+          null, -1, StatementExecution.safeMessage(exception), elapsedMs);
     }
     return new ResultEditResponses.Failed(
-        current.section(), current.changeIndex(), safeMessage(exception), elapsedMs);
+        current.section(), current.changeIndex(), StatementExecution.safeMessage(exception), elapsedMs);
   }
 
   private void rollbackQuietly(Connection connection) {
@@ -163,18 +162,5 @@ public class ResultEditExecutor {
     }
   }
 
-  /** 驱动消息面向用户可定位并截断防护；凭据不出现在驱动错误消息中。 */
-  private static String safeMessage(SQLException exception) {
-    String message = exception.getMessage();
-    if (message == null || message.isBlank()) {
-      return "数据库执行失败，原因未知，本次保存已整体回滚";
-    }
-    return message.length() > DRIVER_MESSAGE_LIMIT
-        ? message.substring(0, DRIVER_MESSAGE_LIMIT) + "…"
-        : message;
-  }
 
-  private static long elapsedMillisSince(long startedAt) {
-    return (System.nanoTime() - startedAt) / 1_000_000;
-  }
 }

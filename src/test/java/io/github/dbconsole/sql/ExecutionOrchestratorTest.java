@@ -100,9 +100,7 @@ class ExecutionOrchestratorTest {
       return new ResultEditExecutor.PlannedStatement(
           0,
           ResultEditSql.delete(
-              io.github.dbconsole.dialect.Dialect.of(
-                  DbConsoleProperties.DatabaseType.MYSQL,
-                  DbConsoleProperties.CompatibilityMode.NATIVE),
+              new io.github.dbconsole.dialect.Dialect(DbConsoleProperties.DatabaseType.MYSQL, DbConsoleProperties.CompatibilityMode.NATIVE),
               List.of("orders"), List.of("id"), List.of(id)));
     }
 

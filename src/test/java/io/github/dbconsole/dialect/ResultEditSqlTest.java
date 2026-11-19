@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 /** 结果编辑语句生成（F-17）：参数化 DML 与确认凭据绑定文本。 */
 class ResultEditSqlTest {
 
-  private static final Dialect MYSQL = Dialect.of(DatabaseType.MYSQL, CompatibilityMode.NATIVE);
-  private static final Dialect DM8 = Dialect.of(DatabaseType.DM8, CompatibilityMode.NATIVE);
+  private static final Dialect MYSQL = new Dialect(DatabaseType.MYSQL, CompatibilityMode.NATIVE);
+  private static final Dialect DM8 = new Dialect(DatabaseType.DM8, CompatibilityMode.NATIVE);
 
   @Test
   @DisplayName("MySQL 系生成反引号引用的参数化 DELETE/UPDATE/INSERT")

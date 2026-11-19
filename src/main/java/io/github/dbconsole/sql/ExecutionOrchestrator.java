@@ -98,6 +98,7 @@ public class ExecutionOrchestrator {
 
   /** 工作台（F-04/F-05）：SELECT 首页分页 + 可编辑标记 + 历史；写语句先过确认门。 */
   private SqlResponses runWorkbenchQuery(ExecutionForm.WorkbenchQueryForm form) {
+    rejectIfTooLong(form.sql());
     Precheck precheck = precheck(form.sourceId(), form.sql());
     rejectIfOutOfScope(precheck.statement());
     // 有未提交事务时隐式提交 DDL 一律先拦截（F-16），不进入确认流程
@@ -118,6 +119,7 @@ public class ExecutionOrchestrator {
 
   /** 脚本（F-13）：恒自动提交（互斥守卫），不分页、不写会话历史。 */
   private SqlResponses runScriptStatement(ExecutionForm.ScriptStatementForm form) {
+    rejectIfTooLong(form.sql());
     Precheck precheck = precheck(form.sourceId(), form.sql());
     rejectIfOutOfScope(precheck.statement());
     transactions.requireScriptAutoCommit(form.sessionToken(), precheck.source().id());
@@ -260,7 +262,6 @@ public class ExecutionOrchestrator {
 
   /** 前置分析（工作台/脚本/翻页共用）：长度门 → 解析数据源 → 方言分析（fail-closed）。 */
   private Precheck precheck(String sourceId, String sql) {
-    rejectIfTooLong(sql);
     ResolvedDataSource source = registry.resolve(sourceId);
     SqlAnalysisResult analysis = source.dialect().analyzer().analyze(sql);
     if (analysis instanceof RejectedSql rejected) {
@@ -338,7 +339,7 @@ public class ExecutionOrchestrator {
   }
 
   private static String tokenAt(List<String> tokens, int index) {
-    if (tokens == null || index < 0 || index >= tokens.size()) {
+    if (tokens == null || index >= tokens.size()) {
       return null;
     }
     return tokens.get(index);
@@ -346,9 +347,17 @@ public class ExecutionOrchestrator {
 
   /** 审计主语（F-10 不含完整 SQL 与数据）：段计数指纹即可定位一次保存的规模。 */
   private static String batchAuditSubject(List<ResultEditExecutor.PlannedStatement> planned) {
-    long deletes = planned.stream().filter(s -> "DELETE".equals(s.section())).count();
-    long updates = planned.stream().filter(s -> "UPDATE".equals(s.section())).count();
-    long inserts = planned.stream().filter(s -> "INSERT".equals(s.section())).count();
+    int deletes = 0;
+    int updates = 0;
+    int inserts = 0;
+    for (ResultEditExecutor.PlannedStatement statement : planned) {
+      switch (statement.generated().kind()) {
+        case DELETE -> deletes++;
+        case UPDATE -> updates++;
+        case INSERT -> inserts++;
+        default -> { /* 不会出现 */ }
+      }
+    }
     return "结果编辑保存 DELETE " + deletes + " / UPDATE " + updates + " / INSERT " + inserts;
   }
 
@@ -357,7 +366,7 @@ public class ExecutionOrchestrator {
   }
 
   private static long elapsedMillisSince(long startedAt) {
-    return (System.nanoTime() - startedAt) / 1_000_000;
+    return StatementExecution.elapsedMillisSince(startedAt);
   }
 
   private record Precheck(ResolvedDataSource source, String sql, SqlStatement statement) {}
