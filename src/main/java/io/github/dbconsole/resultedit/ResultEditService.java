@@ -65,7 +65,7 @@ public class ResultEditService {
                 () ->
                     new SqlRejectException(
                         "TABLE_UNREADABLE", "来源表不可读或不存在，无法保存，请刷新后重试"));
-    List<String> primaryKeys = primaryKeyNames(resolved.structure());
+    List<String> primaryKeys = resolved.structure().primaryKeyNames();
     if (primaryKeys.isEmpty()) {
       throw new SqlRejectException("NO_PRIMARY_KEY", "来源表没有主键，无法定位行，请刷新后重试");
     }
@@ -87,11 +87,10 @@ public class ResultEditService {
       ResultEditRequest request,
       List<String> statementTableParts) {
     Dialect dialect = source.dialect();
-    Map<String, TableStructure.ColumnDefinition> tableColumns = columnsByLowerName(structure);
     List<ResultEditExecutor.PlannedStatement> planned = new ArrayList<>();
     for (int index = 0; index < request.deletes().size(); index++) {
       ResultEditRequest.DeleteChange change = request.deletes().get(index);
-      KeyAndValues key = validateKey(tableColumns, primaryKeys, change.key(), "删除", index);
+      KeyAndValues key = validateKey(structure, primaryKeys, change.key(), "删除", index);
       validateValueSizes(change.key(), "删除", index);
       planned.add(
           new ResultEditExecutor.PlannedStatement(
@@ -101,7 +100,7 @@ public class ResultEditService {
     }
     for (int index = 0; index < request.updates().size(); index++) {
       ResultEditRequest.UpdateChange change = request.updates().get(index);
-      KeyAndValues key = validateKey(tableColumns, primaryKeys, change.key(), "更新", index);
+      KeyAndValues key = validateKey(structure, primaryKeys, change.key(), "更新", index);
       if (change.set().isEmpty()) {
         throw rejection("更新", index, "没有变更列");
       }
@@ -109,7 +108,7 @@ public class ResultEditService {
       List<Object> setValues = new ArrayList<>();
       for (Map.Entry<String, Object> entry : change.set().entrySet()) {
         TableStructure.ColumnDefinition column =
-            requireColumn(tableColumns, entry.getKey(), "更新", index);
+            requireColumn(structure, entry.getKey(), "更新", index);
         if (column.primaryKey()) {
           throw rejection("更新", index, "主键列不可修改：" + column.name());
         }
@@ -137,7 +136,7 @@ public class ResultEditService {
       List<Object> insertValues = new ArrayList<>();
       for (Map.Entry<String, Object> entry : change.values().entrySet()) {
         TableStructure.ColumnDefinition column =
-            requireColumn(tableColumns, entry.getKey(), "新增", index);
+            requireColumn(structure, entry.getKey(), "新增", index);
         if (entry.getValue() == null && !column.nullable()) {
           throw rejection("新增", index, "NOT NULL 列不能为空：" + column.name());
         }
@@ -158,7 +157,7 @@ public class ResultEditService {
 
   /** key 必须恰好覆盖全部主键列（大小写不敏感），值非空。 */
   private KeyAndValues validateKey(
-      Map<String, TableStructure.ColumnDefinition> columns,
+      TableStructure structure,
       List<String> primaryKeys,
       Map<String, Object> key,
       String section,
@@ -189,15 +188,10 @@ public class ResultEditService {
   }
 
   private TableStructure.ColumnDefinition requireColumn(
-      Map<String, TableStructure.ColumnDefinition> columns,
-      String name,
-      String section,
-      int index) {
-    TableStructure.ColumnDefinition column = columns.get(name.toLowerCase(Locale.ROOT));
-    if (column == null) {
-      throw rejection(section, index, "列不存在：" + name);
-    }
-    return column;
+      TableStructure structure, String name, String section, int index) {
+    return structure
+        .findColumn(name)
+        .orElseThrow(() -> rejection(section, index, "列不存在：" + name));
   }
 
   /** 字符串值按 UTF-8 字节数对齐单元格上限（F-08 maxCellBytes）；超限前置拒绝。 */
@@ -216,20 +210,6 @@ public class ResultEditService {
         "INVALID_CHANGE", "第 " + (index + 1) + " 条" + section + "变更无效：" + message);
   }
 
-  private static List<String> primaryKeyNames(TableStructure structure) {
-    return structure.columns().stream()
-        .filter(TableStructure.ColumnDefinition::primaryKey)
-        .map(TableStructure.ColumnDefinition::name)
-        .toList();
-  }
 
-  private static Map<String, TableStructure.ColumnDefinition> columnsByLowerName(
-      TableStructure structure) {
-    Map<String, TableStructure.ColumnDefinition> byLowerName = new HashMap<>();
-    for (TableStructure.ColumnDefinition column : structure.columns()) {
-      byLowerName.putIfAbsent(column.name().toLowerCase(Locale.ROOT), column);
-    }
-    return byLowerName;
-  }
 
 }

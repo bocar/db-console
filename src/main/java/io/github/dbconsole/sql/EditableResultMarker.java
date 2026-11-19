@@ -55,11 +55,7 @@ class EditableResultMarker {
     if (structure == null) {
       return result;
     }
-    List<String> primaryKeys =
-        structure.columns().stream()
-            .filter(TableStructure.ColumnDefinition::primaryKey)
-            .map(TableStructure.ColumnDefinition::name)
-            .toList();
+    List<String> primaryKeys = structure.primaryKeyNames();
     if (primaryKeys.isEmpty()) {
       return result;
     }
@@ -80,15 +76,12 @@ class EditableResultMarker {
     for (SqlResponses.QueryColumn column : result.columns()) {
       resultNameCounts.merge(column.name().toLowerCase(Locale.ROOT), 1L, Long::sum);
     }
-    Map<String, TableStructure.ColumnDefinition> tableByLowerName = new HashMap<>();
-    for (TableStructure.ColumnDefinition column : structure.columns()) {
-      tableByLowerName.putIfAbsent(column.name().toLowerCase(Locale.ROOT), column);
-    }
     List<SqlResponses.EditableColumn> mapped = new ArrayList<>(result.columns().size());
     for (SqlResponses.QueryColumn resultColumn : result.columns()) {
       String lowerName = resultColumn.name().toLowerCase(Locale.ROOT);
       boolean duplicated = resultNameCounts.get(lowerName) > 1;
-      TableStructure.ColumnDefinition tableColumn = tableByLowerName.get(lowerName);
+      TableStructure.ColumnDefinition tableColumn =
+          structure.findColumn(resultColumn.name()).orElse(null);
       mapped.add(duplicated || tableColumn == null ? null : toEditableColumn(tableColumn));
     }
     boolean primaryKeyCovered =
@@ -96,7 +89,7 @@ class EditableResultMarker {
             .allMatch(
                 key ->
                     resultNameCounts.getOrDefault(key.toLowerCase(Locale.ROOT), 0L) == 1L
-                        && tableByLowerName.containsKey(key.toLowerCase(Locale.ROOT)));
+                        && structure.findColumn(key).isPresent());
     if (!primaryKeyCovered) {
       return null;
     }
