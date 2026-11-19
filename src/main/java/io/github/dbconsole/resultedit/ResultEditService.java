@@ -12,7 +12,6 @@ import io.github.dbconsole.sql.ExecutionOrchestrator;
 import io.github.dbconsole.sql.ResultEditExecutor;
 import io.github.dbconsole.sql.SqlRejectException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;

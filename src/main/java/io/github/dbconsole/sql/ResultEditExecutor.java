@@ -99,7 +99,10 @@ public class ResultEditExecutor {
         try {
           connection.close();
         } catch (SQLException closeFailure) {
-          // 关闭失败不影响执行结果
+          // 关闭失败不影响执行结果。
+          // §4 要求 try-with-resources，此处为已记录的例外：TWRC 的 close 抛出会丢弃
+          // 已定返回值（提交成功会被误报为异常），与 StatementExecution 同款取舍。
+          log.debug("批次连接关闭失败 sourceId={}", source.id());
         }
       }
     }

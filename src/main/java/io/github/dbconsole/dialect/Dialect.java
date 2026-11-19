@@ -2,6 +2,7 @@ package io.github.dbconsole.dialect;
 
 import io.github.dbconsole.config.DbConsoleProperties.CompatibilityMode;
 import io.github.dbconsole.config.DbConsoleProperties.DatabaseType;
+import java.util.List;
 import java.util.StringJoiner;
 
 /**
@@ -28,7 +29,7 @@ public record Dialect(DatabaseType type, CompatibilityMode mode) {
   }
 
   /** 限定名引用：逐段引用后以点连接。 */
-  public String quoteQualified(java.util.List<String> parts) {
+  public String quoteQualified(List<String> parts) {
     StringJoiner qualified = new StringJoiner(".");
     for (String part : parts) {
       qualified.add(quoteIdentifier(part));
