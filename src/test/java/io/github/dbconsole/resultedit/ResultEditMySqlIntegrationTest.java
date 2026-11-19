@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +34,9 @@ import org.springframework.test.web.servlet.MvcResult;
  * F-17 MySQL 实库验收：可编辑结果标记、开发环境保存 round-trip（删除/更新/SET NULL/新增）、
  * 行不存在整体回滚。需要环境变量 DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD；
  * 破坏性操作仅落在 dbconsole_test_ 前缀表上（隔离纪律），结束清理。
+ * 指向共享远程库（WAN 抖动），默认套件按标签排除，经 -Pmysql-it 单独复跑（F-13 惯例）。
  */
+@Tag("mysql-integration")
 @SpringBootTest
 @AutoConfigureMockMvc
 @org.springframework.context.annotation.Import(io.github.dbconsole.web.EnvCredentialSource.class)

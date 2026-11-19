@@ -23,6 +23,9 @@
     <!-- node 22 LTS 最新线：满足 jsdom 31 / undici 声明的 engines 下限 -->
     <node.version>v22.23.5</node.version>
     <pnpm.version>11.24.0</pnpm.version>
+    <!-- MySQL 集成验收指向共享远程库（WAN 抖动，SLEEP 取消用例偶发）：默认按标签排除，
+         复跑用 -Pmysql-it（仍需 DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD；F-13「指向服务器单独复跑」惯例机制化） -->
+    <surefire.excludedGroups>mysql-integration</surefire.excludedGroups>
   </properties>
 
   <dependencies>
@@ -189,6 +192,23 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- 单独复跑 MySQL 集成验收：清空标签排除，仍需 DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD -->
+    <profile>
+      <id>mysql-it</id>
+      <properties>
+        <surefire.excludedGroups />
+      </properties>
+    </profile>
+  </profiles>
 </project>

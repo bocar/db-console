@@ -10,6 +10,7 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -24,8 +25,10 @@ import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * 本地 MySQL 集成验收：需要环境变量 DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD（真实密码，不落测试代码），
- * 缺失时整类跳过。
+ * 缺失时整类跳过。指向共享远程库（WAN 抖动），默认套件按标签排除，
+ * 经 -Pmysql-it 单独复跑（F-13 惯例）。
  */
+@Tag("mysql-integration")
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(

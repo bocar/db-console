@@ -2,6 +2,7 @@ package io.github.dbconsole.sql;
 
 import static io.github.dbconsole.web.JsonText.jsonText;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +43,9 @@ import org.springframework.test.web.servlet.MvcResult;
 /**
  * 本地 MySQL 执行链路集成验收：需要环境变量 DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD，
  * 破坏性操作仅落在 dbconsole_test_ 前缀表上（隔离纪律），结束清理。
+ * 指向共享远程库（WAN 抖动），默认套件按标签排除，经 -Pmysql-it 单独复跑（F-13 惯例）。
  */
+@Tag("mysql-integration")
 @SpringBootTest
 @AutoConfigureMockMvc
 @org.springframework.context.annotation.Import(io.github.dbconsole.web.EnvCredentialSource.class)
@@ -284,14 +288,16 @@ class SqlExecutionMySqlIntegrationTest {
   @Test
   void realDriverLongQueryIsCancellable() {
     // 共享库上 KILL QUERY 辅助连接偶发延迟（F-17 验收记录两次留痕）：单次重试吸收
-    // 负载抖动，断言本身不放松——两轮都跑满才判失败
+    // 负载抖动，断言本身不放松——两轮都未及生效才判失败，失败信息带全部轮次终态
+    List<String> outcomes = new ArrayList<>();
     for (int attempt = 1; attempt <= 2; attempt++) {
       String outcome = cancelProbeOutcome();
       if ("CANCELLED".equals(outcome)) {
         return;
       }
-      assertThat(attempt).as("第 %d 轮取消未及生效，终态 %s", attempt, outcome).isEqualTo(1);
+      outcomes.add("第 " + attempt + " 轮终态 " + outcome);
     }
+    fail("两轮取消探测均未在执行窗口内生效：" + String.join("；", outcomes));
   }
 
   private String cancelProbeOutcome() {

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +35,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 /**
  * 本地 MySQL 手动事务集成验收（F-16 前半）：提交前后可见性、整笔回滚、
  * 跨会话隔离、空闲超时清理与登出回滚。破坏性操作仅落在 dbconsole_test_ 前缀表。
+ * 指向共享远程库（WAN 抖动），默认套件按标签排除，经 -Pmysql-it 单独复跑（F-13 惯例）。
  */
+@Tag("mysql-integration")
 @SpringBootTest
 @AutoConfigureMockMvc
 @org.springframework.context.annotation.Import(io.github.dbconsole.web.EnvCredentialSource.class)

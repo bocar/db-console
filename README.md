@@ -16,7 +16,7 @@
 
 - **已完成**：工程基线（驱动锁定、双侧测试骨架、本地配置）；登录与登录会话（F-01）；数据源与连接测试（F-02）；方言语法分析器（ADR-0001，语句边界 / 操作分类 / 最外层 WHERE 检测 / 分页包装判定与方言分页 SQL）；对象树与 DESC（F-03 / F-06）；单语句执行与结果渲染（F-04 / F-05 / F-08），含后端确认机制（F-09）；手动事务与隐式提交 DDL（F-16）；结果三级限制与执行结果未知（F-08 完整 + F-10 部分）；会话历史（F-12）；表列注释生成（F-07）；导出与复制（F-15）；JSONL 审计（F-10 后半）；服务端分页（F-11）；查询取消与执行限制（F-14 + F-10 前半）；脚本执行（F-13，上传预校验 / 逐条执行 / 恢复 / 汇总历史）。
 - **已验收**：T17 发布验收（#18）——§5.1 自动化全绿、§5.2 MySQL/DM8 双库逐项验收（生产确认、分页连续性、取消两态、事务与 DDL 拦截、只读账号）、§5.3 JAR 与 Docker 分别启动验证；记录见 [docs/ACCEPTANCE-T17.md](docs/ACCEPTANCE-T17.md)。
-- 全量测试：后端 304 + 前端 60 用例（双库凭据在位时含真实 MySQL/DM8 集成验收，`DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD` / `DB_CONSOLE_DM8_NAVIC_PASSWORD` 经环境变量注入）。
+- 全量测试：后端 366 + 前端 67 用例（DM8 集成随默认套件实跑，凭据经 `DB_CONSOLE_DM8_NAVIC_PASSWORD` 注入；MySQL 集成 20 例默认排除，`mvn test -Pmysql-it` 且 `DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD` 在位时单独复跑）。
 
 ## 架构与关键边界
 
@@ -43,12 +43,13 @@
 | 启动后端 | `mvn spring-boot:run` |
 | 运行全部测试（含前端构建与测试） | `mvn test` |
 | 运行单个后端测试类 | `mvn -Dtest=ClassName test` |
+| 单独复跑 MySQL 集成验收（共享远程库） | `mvn test -Pmysql-it` |
 | 前端类型检查 | 在 `src/main/webapp/` 执行 `pnpm typecheck` |
 | 前端测试 | 在 `src/main/webapp/` 执行 `pnpm test` |
 | 构建包含前端资源的可执行 JAR | `mvn clean package` |
 | 发布前检查 | `mvn clean verify` |
 
-Maven 会自动安装锁定版本的 Node.js 和 pnpm，执行前端依赖安装、类型检查及 Vite 构建，再复制到 JAR 的静态资源目录。MySQL 集成测试需要设置 `DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD` 环境变量，缺失时自动跳过。
+Maven 会自动安装锁定版本的 Node.js 和 pnpm，执行前端依赖安装、类型检查及 Vite 构建，再复制到 JAR 的静态资源目录。MySQL 集成验收指向共享远程库（WAN 抖动，取消用例偶发），默认套件按标签排除：复跑需 `mvn test -Pmysql-it` 且设置 `DB_CONSOLE_MYSQL_WORKNOTE_PASSWORD`，缺失时整类跳过；DM8 集成验收仍随默认套件，凭据在位时实跑。
 
 代码规范：Java 采用 Google Java Style（两空格缩进、显式导入）；Vue 采用单文件组件 + Composition API + TypeScript 严格检查。SQL、注释、结果及数据库错误按文本渲染。详细规范见 [开发规范](docs/REQUIREMENTS.md#4-开发规范)。
 
