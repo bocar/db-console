@@ -72,6 +72,7 @@ class EditableResultMarker {
       List<String> primaryKeys,
       SqlResponses.QueryResult result,
       List<String> tableParts) {
+    Map<String, TableStructure.ColumnDefinition> tableColumns = structure.lowerCaseColumnIndex();
     Map<String, Long> resultNameCounts = new HashMap<>();
     for (SqlResponses.QueryColumn column : result.columns()) {
       resultNameCounts.merge(column.name().toLowerCase(Locale.ROOT), 1L, Long::sum);
@@ -80,16 +81,17 @@ class EditableResultMarker {
     for (SqlResponses.QueryColumn resultColumn : result.columns()) {
       String lowerName = resultColumn.name().toLowerCase(Locale.ROOT);
       boolean duplicated = resultNameCounts.get(lowerName) > 1;
-      TableStructure.ColumnDefinition tableColumn =
-          structure.findColumn(resultColumn.name()).orElse(null);
+      TableStructure.ColumnDefinition tableColumn = tableColumns.get(lowerName);
       mapped.add(duplicated || tableColumn == null ? null : toEditableColumn(tableColumn));
     }
     boolean primaryKeyCovered =
         primaryKeys.stream()
             .allMatch(
-                key ->
-                    resultNameCounts.getOrDefault(key.toLowerCase(Locale.ROOT), 0L) == 1L
-                        && structure.findColumn(key).isPresent());
+                key -> {
+                  String lowerKey = key.toLowerCase(Locale.ROOT);
+                  return resultNameCounts.getOrDefault(lowerKey, 0L) == 1L
+                      && tableColumns.containsKey(lowerKey);
+                });
     if (!primaryKeyCovered) {
       return null;
     }

@@ -81,10 +81,12 @@ public class ResultEditService {
       ResultEditRequest request,
       List<String> statementTableParts) {
     Dialect dialect = source.dialect();
+    Map<String, TableStructure.ColumnDefinition> columnsByLowerName =
+        structure.lowerCaseColumnIndex();
     List<ResultEditExecutor.PlannedStatement> planned = new ArrayList<>();
     for (int index = 0; index < request.deletes().size(); index++) {
       ResultEditRequest.DeleteChange change = request.deletes().get(index);
-      KeyAndValues key = validateKey(structure, primaryKeys, change.key(), "删除", index);
+      KeyAndValues key = validateKey(primaryKeys, change.key(), "删除", index);
       validateValueSizes(change.key(), "删除", index);
       planned.add(
           new ResultEditExecutor.PlannedStatement(
@@ -94,7 +96,7 @@ public class ResultEditService {
     }
     for (int index = 0; index < request.updates().size(); index++) {
       ResultEditRequest.UpdateChange change = request.updates().get(index);
-      KeyAndValues key = validateKey(structure, primaryKeys, change.key(), "更新", index);
+      KeyAndValues key = validateKey(primaryKeys, change.key(), "更新", index);
       if (change.set().isEmpty()) {
         throw rejection("更新", index, "没有变更列");
       }
@@ -102,7 +104,7 @@ public class ResultEditService {
       List<Object> setValues = new ArrayList<>();
       for (Map.Entry<String, Object> entry : change.set().entrySet()) {
         TableStructure.ColumnDefinition column =
-            requireColumn(structure, entry.getKey(), "更新", index);
+            requireColumn(columnsByLowerName, entry.getKey(), "更新", index);
         if (column.primaryKey()) {
           throw rejection("更新", index, "主键列不可修改：" + column.name());
         }
@@ -130,7 +132,7 @@ public class ResultEditService {
       List<Object> insertValues = new ArrayList<>();
       for (Map.Entry<String, Object> entry : change.values().entrySet()) {
         TableStructure.ColumnDefinition column =
-            requireColumn(structure, entry.getKey(), "新增", index);
+            requireColumn(columnsByLowerName, entry.getKey(), "新增", index);
         if (entry.getValue() == null && !column.nullable()) {
           throw rejection("新增", index, "NOT NULL 列不能为空：" + column.name());
         }
@@ -151,7 +153,6 @@ public class ResultEditService {
 
   /** key 必须恰好覆盖全部主键列（大小写不敏感），值非空。 */
   private KeyAndValues validateKey(
-      TableStructure structure,
       List<String> primaryKeys,
       Map<String, Object> key,
       String section,
@@ -182,10 +183,15 @@ public class ResultEditService {
   }
 
   private TableStructure.ColumnDefinition requireColumn(
-      TableStructure structure, String name, String section, int index) {
-    return structure
-        .findColumn(name)
-        .orElseThrow(() -> rejection(section, index, "列不存在：" + name));
+      Map<String, TableStructure.ColumnDefinition> columnsByLowerName,
+      String name,
+      String section,
+      int index) {
+    TableStructure.ColumnDefinition column = columnsByLowerName.get(name.toLowerCase(Locale.ROOT));
+    if (column == null) {
+      throw rejection(section, index, "列不存在：" + name);
+    }
+    return column;
   }
 
   /** 字符串值按 UTF-8 字节数对齐单元格上限（F-08 maxCellBytes）；超限前置拒绝。 */

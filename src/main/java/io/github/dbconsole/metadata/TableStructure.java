@@ -1,8 +1,10 @@
 package io.github.dbconsole.metadata;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
+import java.util.Map;
 
 /**
  * 表结构（wire）：列、索引与外键（F-03）。列身份语义（主键组、大小写不敏感列查找）
@@ -23,12 +25,17 @@ public record TableStructure(
         .toList();
   }
 
-  /** 大小写不敏感列查找（存储形态各异：DM8 大写、MySQL 原样）。 */
-  public Optional<ColumnDefinition> findColumn(String name) {
-    String lower = name.toLowerCase(Locale.ROOT);
-    return columns.stream()
-        .filter(column -> column.name().toLowerCase(Locale.ROOT).equals(lower))
-        .findFirst();
+  /**
+   * 小写列名 → 列定义索引（大小写同名时首列优先）。列查找统一走本索引：
+   * 批量场景（结果列映射、编辑计划逐变更校验）一次建索引复用，避免逐列全扫 +
+   * 重复 toLowerCase（O(N×M)，F-17 挂账回补；原 findColumn 已无调用位，随批移除）。
+   */
+  public Map<String, ColumnDefinition> lowerCaseColumnIndex() {
+    Map<String, ColumnDefinition> index = new HashMap<>();
+    for (ColumnDefinition column : columns) {
+      index.putIfAbsent(column.name().toLowerCase(Locale.ROOT), column);
+    }
+    return Collections.unmodifiableMap(index);
   }
 
   public record ColumnDefinition(
