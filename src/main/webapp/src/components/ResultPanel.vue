@@ -1,35 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Check, ChevronLeft, ChevronRight, Clipboard, Code2, Download, Info, KeyRound, Plus, Save, Table2, Trash2, Undo2, X } from 'lucide-vue-next'
-import type { EditableColumn, QueryColumn, QueryRow, QueryValue, TableDefinition, UpdateResult } from '../types'
+import type { EditableColumn, QueryValue, TableDefinition } from '../types'
 import { displayQueryValue } from '../display'
 import { useResultEditing } from '../composables/useResultEditing'
+import { useResults } from '../composables/useResults'
+import { useToast } from '../composables/useToast'
 
-const props = defineProps<{
-  columns: QueryColumn[]
-  rows: QueryRow[]
+// interface（F-17 深化）：结果数据经 useResults/useToast 模块 seam 自取，
+// props 收敛为纯展示参数（对象树选中表 / 事务态 / 数据源名）
+defineProps<{
   selectedTable?: TableDefinition
-  page: number
-  pageSize: number
-  totalRows: number | null
-  totalPages?: number | null
-  hasNextPage?: boolean
-  paginated?: boolean
-  paging?: boolean
-  elapsed: number
-  activeTab: 'result' | 'structure' | 'info'
   transactionPending: boolean
   sourceName: string
-  hasResult: boolean
-  updateInfo?: UpdateResult
-  truncated?: boolean
-}>()
-
-const emit = defineEmits<{
-  tabChange: [tab: 'result' | 'structure' | 'info']
-  pageChange: [page: number]
-  pageSizeChange: [size: number]
-  notify: [message: string]
 }>()
 
 // 结果表格编辑（F-17）：模块级暂存状态，双击编辑、删除标记与保存按钮都在本组件内呈现
@@ -46,15 +29,39 @@ const {
 const editableColumn = (columnIndex: number): EditableColumn | null =>
   editableInfo.value?.columns[columnIndex] ?? null
 
+const results = useResults()
+const toast = useToast()
+// 以下本地名与模板标识符对齐（原 props 镜像的自取版）
+const columns = computed(() => results.visibleColumns.value)
+const rows = computed(() => results.visibleRows.value)
+const page = computed(() => results.page.value)
+const pageSize = computed(() => results.pageSize.value)
+const totalRows = computed(() => results.totalRows.value)
+const totalPages = computed(() => results.totalPages.value)
+const hasNextPage = computed(() => results.hasNextPage.value)
+const paginated = computed(() => results.queryResult.value?.page != null)
+const paging = computed(() => results.isPaging.value)
+const elapsed = computed(() => results.elapsedMs.value)
+const activeTab = results.activeTab
+const hasResult = computed(() => results.hasResult.value)
+const updateInfo = computed(() => results.updateResult.value ?? undefined)
+const truncated = computed(() => results.queryResult.value?.truncated ?? false)
+const notify = (message: string) => toast.notify(message)
+const pageChange = (target: number) => void results.changePage(target)
+const changePageSize = (size: number) => void results.changePageSize(size)
+const tabChange = (tab: 'result' | 'structure' | 'info') => {
+  results.activeTab.value = tab
+}
+
 const selectedRows = ref(new Set<number>())
 const selectedCell = ref<{ row: number; column: number } | null>({ row: 0, column: 1 })
-const pageCount = computed(() => Math.max(1, props.totalPages ?? props.page + (props.hasNextPage ? 1 : 0)))
+const pageCount = computed(() => Math.max(1, totalPages.value ?? page.value + (hasNextPage.value ? 1 : 0)))
 const nextDisabled = computed(() =>
-  props.paging || editDirty.value || (props.totalPages == null ? !props.hasNextPage : props.page >= pageCount.value),
+  paging.value || editDirty.value || (totalPages.value == null ? !hasNextPage.value : page.value >= pageCount.value),
 )
 const selectionCount = computed(() => selectedRows.value.size)
 
-watch(() => props.rows, () => {
+watch(rows, () => {
   selectedRows.value.clear()
   selectedCell.value = null
 })
@@ -71,18 +78,18 @@ const copySelection = async () => {
   if (selectedRows.value.size > 0) {
     text = [...selectedRows.value]
       .sort((a, b) => a - b)
-      .map((index) => props.rows[index].map((value) => displayQueryValue(value)).join('\t'))
+      .map((index) => rows.value[index].map((value) => displayQueryValue(value)).join('\t'))
       .join('\n')
   } else if (selectedCell.value) {
     const { row, column } = selectedCell.value
-    text = props.rows[row] ? displayQueryValue(props.rows[row][column]) : ''
+    text = rows.value[row] ? displayQueryValue(rows.value[row][column]) : ''
   }
   if (!text) return
   try {
     await navigator.clipboard.writeText(text)
-    emit('notify', selectedRows.value.size > 0 ? `已复制 ${selectedRows.value.size} 行` : '已复制当前单元格')
+    notify(selectedRows.value.size > 0 ? `已复制 ${selectedRows.value.size} 行` : '已复制当前单元格')
   } catch {
-    emit('notify', '浏览器未允许访问剪贴板，请手动复制。')
+    notify('浏览器未允许访问剪贴板，请手动复制。')
   }
 }
 
@@ -92,24 +99,24 @@ const csvValue = (value: QueryValue) => {
 }
 
 const exportCsv = () => {
-  const header = props.columns.map((column) => csvValue(column.name)).join(',')
-  const body = props.rows.map((row) => row.map(csvValue).join(',')).join('\r\n')
+  const header = columns.value.map((column) => csvValue(column.name)).join(',')
+  const body = rows.value.map((row) => row.map(csvValue).join(',')).join('\r\n')
   const blob = new Blob([`\uFEFF${header}\r\n${body}`], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `query-result-page-${props.page}.csv`
+  link.download = `query-result-page-${page.value}.csv`
   link.click()
   URL.revokeObjectURL(url)
-  emit('notify', props.truncated ? `已导出当前加载的 ${props.rows.length} 行（结果超过单次上限，已截断）` : `已导出当前加载的 ${props.rows.length} 行`)
+  notify(truncated.value ? `已导出当前加载的 ${rows.value.length} 行（结果超过单次上限，已截断）` : `已导出当前加载的 ${rows.value.length} 行`)
 }
 
 const changePage = (event: Event) => {
   const input = event.target as HTMLInputElement
   const requested = Number.parseInt(input.value, 10)
-  const page = Number.isFinite(requested) ? Math.min(pageCount.value, Math.max(1, requested)) : props.page
-  input.value = String(page)
-  emit('pageChange', page)
+  const target = Number.isFinite(requested) ? Math.min(pageCount.value, Math.max(1, requested)) : page.value
+  input.value = String(target)
+  pageChange(target)
 }
 </script>
 
@@ -117,13 +124,13 @@ const changePage = (event: Event) => {
   <section class="result-panel" aria-label="查询结果与执行信息">
     <div class="result-toolbar">
       <div class="result-tabs" role="tablist" aria-label="结果视图">
-        <button type="button" role="tab" :aria-selected="activeTab === 'result'" :class="{ active: activeTab === 'result' }" @click="emit('tabChange', 'result')">
+        <button type="button" role="tab" :aria-selected="activeTab === 'result'" :class="{ active: activeTab === 'result' }" @click="tabChange('result')">
           <Table2 :size="14" />查询结果<span class="tab-count">{{ totalRows ?? rows.length }}</span>
         </button>
-        <button type="button" role="tab" :aria-selected="activeTab === 'structure'" :class="{ active: activeTab === 'structure' }" @click="emit('tabChange', 'structure')">
+        <button type="button" role="tab" :aria-selected="activeTab === 'structure'" :class="{ active: activeTab === 'structure' }" @click="tabChange('structure')">
           <Code2 :size="14" />表结构<span v-if="selectedTable" class="tab-name mono">{{ selectedTable.name }}</span>
         </button>
-        <button type="button" role="tab" :aria-selected="activeTab === 'info'" :class="{ active: activeTab === 'info' }" @click="emit('tabChange', 'info')">执行信息</button>
+        <button type="button" role="tab" :aria-selected="activeTab === 'info'" :class="{ active: activeTab === 'info' }" @click="tabChange('info')">执行信息</button>
       </div>
       <div v-if="activeTab === 'result'" class="result-actions">
         <span v-if="selectionCount" class="selection-count">已选 {{ selectionCount }} 行</span>
@@ -237,18 +244,18 @@ const changePage = (event: Event) => {
         <span v-if="editDirty" class="edit-lock-note">有未保存更改，翻页前请先保存或放弃</span>
         <div class="page-controls">
           <label for="page-size">每页</label>
-          <select id="page-size" :value="pageSize" name="page-size" :disabled="paging || editDirty" @change="emit('pageSizeChange', Number(($event.target as HTMLSelectElement).value))">
+          <select id="page-size" :value="pageSize" name="page-size" :disabled="paging || editDirty" @change="changePageSize(Number(($event.target as HTMLSelectElement).value))">
             <option :value="10">10</option>
             <option :value="20">20</option>
             <option :value="50">50</option>
             <option :value="100">100</option>
           </select>
           <span class="page-size-unit">行</span>
-          <button type="button" class="icon-button" aria-label="上一页" :disabled="page <= 1 || paging || editDirty" @click="emit('pageChange', page - 1)"><ChevronLeft :size="16" /></button>
+          <button type="button" class="icon-button" aria-label="上一页" :disabled="page <= 1 || paging || editDirty" @click="pageChange(page - 1)"><ChevronLeft :size="16" /></button>
           <label class="visually-hidden" for="page-number">页码</label>
           <input id="page-number" class="page-number mono" type="number" name="page-number" min="1" :max="totalPages ?? undefined" :value="page" :disabled="paging || editDirty" @change="changePage" />
           <span>/ {{ totalPages == null ? '?' : pageCount }} 页</span>
-          <button type="button" class="icon-button" aria-label="下一页" :disabled="nextDisabled" @click="emit('pageChange', page + 1)"><ChevronRight :size="16" /></button>
+          <button type="button" class="icon-button" aria-label="下一页" :disabled="nextDisabled" @click="pageChange(page + 1)"><ChevronRight :size="16" /></button>
         </div>
       </div>
     </template>

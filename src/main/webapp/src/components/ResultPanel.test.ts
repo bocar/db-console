@@ -1,9 +1,11 @@
 import { mount } from '@vue/test-utils'
+import { defineComponent, h } from 'vue'
 import { describe, expect, it } from 'vitest'
 import ResultPanel from './ResultPanel.vue'
 import { API_CLIENT_KEY } from '../api/client'
 import { fakeApiClient } from '../api/test-support'
-import type { QueryColumn, QueryRow, UpdateResult } from '../types'
+import { useResults } from '../composables/useResults'
+import type { QueryColumn, QueryRow, QueryResult, UpdateResult } from '../types'
 
 const queryColumns: QueryColumn[] = [
   { name: 'id', type: 'BIGINT' },
@@ -15,26 +17,34 @@ const queryRows: QueryRow[] = [
   [null, ''],
 ]
 
-function mountPanel(overrides: Record<string, unknown> = {}) {
-  return mount(ResultPanel, {
-    props: {
-      columns: queryColumns,
-      rows: queryRows,
-      page: 1,
-      pageSize: 20,
-      totalRows: 2,
-      elapsed: 42,
-      activeTab: 'result',
-      transactionPending: false,
-      sourceName: 'MySQL 工作笔记库',
-      hasResult: true,
-      ...overrides,
+function mountPanel(options: { query?: Partial<QueryResult>; update?: UpdateResult; props?: Record<string, unknown> } = {}) {
+  // F-17 深化：ResultPanel 经 useResults 自取数据——测试以种子状态 + 宿主组件挂载
+  const Host = defineComponent({
+    setup() {
+      const results = useResults()
+      results.reset()
+      if (options.update) {
+        results.showUpdate(options.update)
+      } else {
+        results.showQuery({
+          kind: 'QUERY',
+          columns: queryColumns,
+          rows: queryRows,
+          elapsedMs: 42,
+          truncated: false,
+          ...options.query,
+        } as QueryResult)
+      }
+      return () =>
+        h(ResultPanel, {
+          transactionPending: false,
+          sourceName: 'MySQL 工作笔记库',
+          ...(options.props ?? {}),
+        })
     },
-    // F-17：ResultPanel 经 useResultEditing 依赖 ApiClient 注入
-    global: { provide: { [API_CLIENT_KEY]: fakeApiClient() } },
   })
+  return mount(Host, { global: { provide: { [API_CLIENT_KEY]: fakeApiClient() } } })
 }
-
 describe('ResultPanel', () => {
   it('renders columns and rows by position', () => {
     const wrapper = mountPanel()
@@ -53,7 +63,7 @@ describe('ResultPanel', () => {
   })
 
   it('keeps column headings for zero-row queries', () => {
-    const wrapper = mountPanel({ rows: [], totalRows: 0 })
+    const wrapper = mountPanel({ query: { rows: [], totalRows: 0 } })
 
     expect(wrapper.text()).toContain('id')
     expect(wrapper.text()).toContain('查询已执行，未返回数据行。')
@@ -61,31 +71,31 @@ describe('ResultPanel', () => {
 
   it('shows affected rows for update results and marks missing counts', async () => {
     const update: UpdateResult = { kind: 'UPDATE', affectedRows: 3, elapsedMs: 12, uncommitted: false, implicitCommitDdl: false }
-    const withCount = mountPanel({ activeTab: 'info', updateInfo: update })
+    const withCount = mountPanel({ update: update })
     expect(withCount.text()).toContain('受影响行数')
     expect(withCount.text()).toContain('3')
 
     const withoutCount: UpdateResult = { kind: 'UPDATE', affectedRows: null, elapsedMs: 9, uncommitted: false, implicitCommitDdl: true }
-    const ddl = mountPanel({ activeTab: 'info', updateInfo: withoutCount })
+    const ddl = mountPanel({ update: withoutCount })
     expect(ddl.text()).toContain('驱动未提供行数')
   })
 
   it('uses server total pages and disables next on the last page', () => {
-    const wrapper = mountPanel({ page: 2, totalRows: 2, totalPages: 2, hasNextPage: false, paginated: true })
+    const wrapper = mountPanel({ query: { page: 2, totalRows: 2, totalPages: 2, hasNextPage: false } })
 
     expect(wrapper.text()).toContain('/ 2 页')
     expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeDefined()
   })
 
   it('allows the next page with unknown totals when the server has more rows', () => {
-    const wrapper = mountPanel({ totalRows: null, totalPages: null, hasNextPage: true, paginated: true })
+    const wrapper = mountPanel({ query: { page: 1, pageSize: 20, totalRows: null, totalPages: null, hasNextPage: true } })
 
     expect(wrapper.text()).toContain('总数未知')
     expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeUndefined()
   })
 
   it('hides pagination for non-query outcomes', () => {
-    const wrapper = mountPanel({ paginated: false })
+    const wrapper = mountPanel()
 
     expect(wrapper.find('.pagination-bar').exists()).toBe(false)
   })

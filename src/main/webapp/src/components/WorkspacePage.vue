@@ -39,7 +39,7 @@ const { sources, selectedSourceId, selectedSource, testing } = dataSources
 const objectTree = useObjectTree()
 const { tables, selectedTableName, selectedTable, loading: refreshing } = objectTree
 const results = useResults()
-const { activeTab, page, pageSize, visibleRows, visibleColumns, totalRows, totalPages, hasNextPage, isPaging, elapsedMs, hasResult, updateResult, queryResult } = results
+const { activeTab } = results
 const transaction = useManualTransaction()
 const historyStore = useSqlHistory()
 const { load: loadHistory, clear: clearHistoryFor } = historyStore
@@ -320,27 +320,9 @@ onUnmounted(() => {
           @keydown="resizeWithKeyboard"
         ><span></span></div>
         <ResultPanel
-          :columns="visibleColumns"
-          :rows="visibleRows"
           :selected-table="selectedTable ?? undefined"
-          :page="page"
-          :page-size="pageSize"
-          :total-rows="totalRows"
-          :total-pages="totalPages"
-          :has-next-page="hasNextPage"
-          :paginated="queryResult?.page != null"
-          :paging="isPaging"
-          :elapsed="elapsedMs"
-          :active-tab="activeTab"
           :transaction-pending="transactionActive"
           :source-name="selectedSource?.displayName ?? ''"
-          :has-result="hasResult"
-          :update-info="updateResult ?? undefined"
-          :truncated="queryResult?.truncated ?? false"
-          @tab-change="activeTab = $event"
-          @page-change="results.changePage"
-          @page-size-change="results.changePageSize"
-          @notify="notify"
         />
       </main>
     </div>
