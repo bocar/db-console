@@ -93,8 +93,7 @@ class ExecutionOrchestratorTest {
     private ExecutionForm.EditBatchForm batchForm(
         List<ResultEditExecutor.PlannedStatement> planned, List<String> tokens) {
       return new ExecutionForm.EditBatchForm(
-          source, SESSION_TOKEN, USERNAME, "结果编辑保存使用独立短事务，请先提交或回滚当前事务",
-          planned, tokens);
+          source, SESSION_TOKEN, USERNAME, planned, tokens);
     }
 
     private ResultEditExecutor.PlannedStatement delete(int id) {

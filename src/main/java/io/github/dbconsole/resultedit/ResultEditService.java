@@ -26,10 +26,6 @@ import java.nio.charset.StandardCharsets;
  */
 public class ResultEditService {
 
-  /** 与手动事务互斥的守卫文案随形态（策略）携带，编舞负责执行守卫。 */
-  private static final String MUTEX_MESSAGE =
-      "结果编辑保存使用独立短事务，请先提交或回滚当前事务";
-
   private final DataSourceRegistry registry;
   private final TableStructureService tableStructures;
   private final DbConsoleProperties properties;
@@ -74,8 +70,7 @@ public class ResultEditService {
     // 编舞（互斥守卫、汇总确认门、登记、审计、终态分类）收口在 ExecutionOrchestrator
     return orchestrator.run(
         new ExecutionForm.EditBatchForm(
-            source, sessionToken, username, MUTEX_MESSAGE, planned,
-            request.confirmationTokens()));
+            source, sessionToken, username, planned, request.confirmationTokens()));
   }
 
   /** 重校验并生成语句（确定性：同一请求两次调用产出完全一致的语句与绑定文本）。 */

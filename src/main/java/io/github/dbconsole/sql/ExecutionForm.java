@@ -39,7 +39,6 @@ public sealed interface ExecutionForm<R extends TerminalResponse>
       ResolvedDataSource source,
       String sessionToken,
       String username,
-      String mutexMessage,
       List<ResultEditExecutor.PlannedStatement> planned,
       List<String> confirmationTokens)
       implements ExecutionForm<ResultEditResponses> {}

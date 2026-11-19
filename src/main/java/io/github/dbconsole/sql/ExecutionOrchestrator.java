@@ -32,6 +32,10 @@ import java.util.function.Supplier;
  */
 public class ExecutionOrchestrator {
 
+  /** 批次形态与手动事务互斥的守卫文案（策略随形态，归编舞）。 */
+  private static final String BATCH_MUTEX_MESSAGE =
+      "结果编辑保存使用独立短事务，请先提交或回滚当前事务";
+
   private final DataSourceRegistry registry;
   private final ConfirmationService confirmations;
   private final RunningQueryRegistry runningQueries;
@@ -138,7 +142,7 @@ public class ExecutionOrchestrator {
         transactions.connectionFor(form.sessionToken(), precheck.source().id());
     RunningQuery running = runningQueries.register(form.sessionToken(), precheck.source().id());
     return auditExecution(
-        precheck.source(), form.sql(), form.username(),
+        precheck.source(), form.username(), form.sql(),
         () -> executeArm(
             precheck, form.sessionToken(), transactionConnection, running,
             new StatementExecution.PageRequest(form.page(), form.pageSize()), false, false));
@@ -157,12 +161,12 @@ public class ExecutionOrchestrator {
     ResolvedDataSource source = precheck.source();
     // DESC 走对象树同一结构查询（F-06），不执行原生 SQL
     if (precheck.statement().kind() == StatementKind.DESCRIBE) {
-      return auditExecution(source, sql, username, () -> describeAsQuery(source, sql));
+      return auditExecution(source, username, sql, () -> describeAsQuery(source, sql));
     }
     if (pagedFirstPage) {
       RunningQuery running = runningQueries.register(sessionToken, source.id());
       return auditExecution(
-          source, sql, username,
+          source, username, sql,
           () -> executeArm(
               precheck, sessionToken, transactionConnection, running,
               new StatementExecution.PageRequest(1, properties.execution().defaultPageSize()),
@@ -177,7 +181,7 @@ public class ExecutionOrchestrator {
     }
     RunningQuery running = runningQueries.register(sessionToken, source.id());
     return auditExecution(
-        source, sql, username,
+        source, username, sql,
         () -> executeArm(
             precheck, sessionToken, transactionConnection, running, null, recordHistory, false));
   }
@@ -201,27 +205,16 @@ public class ExecutionOrchestrator {
    */
   private TerminalResponse runBatch(ExecutionForm.EditBatchForm form) {
     ResolvedDataSource source = form.source();
-    transactions.requireNoOpenTransaction(form.sessionToken(), source.id(), form.mutexMessage());
+    transactions.requireNoOpenTransaction(form.sessionToken(), source.id(), BATCH_MUTEX_MESSAGE);
     ResultEditResponses gate = batchConfirmationGate(form);
     if (gate != null) {
       return gate;
     }
     RunningQuery running = runningQueries.register(form.sessionToken(), source.id());
-    long startedAt = System.nanoTime();
     try {
-      ResultEditResponses response;
-      try {
-        response = batchExecutor.execute(source, form.planned(), running, timeoutSeconds());
-      } catch (RuntimeException exception) {
-        audit.recordExecution(
-            form.username(), source.id(), batchAuditSubject(form.planned()),
-            elapsedMillisSince(startedAt), "FAILED");
-        throw exception;
-      }
-      audit.recordExecution(
-          form.username(), source.id(), batchAuditSubject(form.planned()),
-          elapsedMillisSince(startedAt), response.auditStatus());
-      return response;
+      return auditExecution(
+          source, form.username(), batchAuditSubject(form.planned()),
+          () -> batchExecutor.execute(source, form.planned(), running, timeoutSeconds()));
     } finally {
       runningQueries.complete(running);
     }
@@ -292,19 +285,21 @@ public class ExecutionOrchestrator {
     }
   }
 
-  /** 审计终态由响应变体穷尽定义（auditStatus），调用方不拼装状态串。 */
-  private SqlResponses auditExecution(
-      ResolvedDataSource source, String sql, String username,
-      Supplier<SqlResponses> execution) {
+  /**
+   * 审计包裹（单语句与批次共用）：只在真实执行落盘；终态由响应变体穷尽定义
+   * （auditStatus），调用方不拼装状态串。
+   */
+  private <R extends TerminalResponse> R auditExecution(
+      ResolvedDataSource source, String username, String subject, Supplier<R> execution) {
     long startedAt = System.nanoTime();
-    SqlResponses result;
+    R result;
     try {
       result = execution.get();
     } catch (RuntimeException exception) {
-      audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt), "FAILED");
+      audit.recordExecution(username, source.id(), subject, elapsedMillisSince(startedAt), "FAILED");
       throw exception;
     }
-    audit.recordExecution(username, source.id(), sql, elapsedMillisSince(startedAt),
+    audit.recordExecution(username, source.id(), subject, elapsedMillisSince(startedAt),
         result.auditStatus());
     return result;
   }
