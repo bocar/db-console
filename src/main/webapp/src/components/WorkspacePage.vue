@@ -9,6 +9,7 @@ import ResultPanel from './ResultPanel.vue'
 import SqlEditor from './SqlEditor.vue'
 import ToastMessage from './ToastMessage.vue'
 import { confirmationReasonText, displayDatabaseType, displayEnvironment, environmentBadgeClass } from '../display'
+import { statementPreviewText } from '../confirmation-text'
 import { quoteIdentifier, selectTopStatement } from '../dialect'
 import { useDataSources } from '../composables/useDataSources'
 import { useExecution } from '../composables/useExecution'
@@ -107,7 +108,7 @@ const batchSqlText = computed(() => {
       const risk = statement.reason
         ? `【${confirmationReasonText(statement.reason)}】\n`
         : ''
-      return `${risk}${statement.sql}\n-- 参数: ${JSON.stringify(statement.params)}`
+      return `${risk}${statementPreviewText(statement.sql, statement.params)}`
     })
     .join('\n;\n')
 })
