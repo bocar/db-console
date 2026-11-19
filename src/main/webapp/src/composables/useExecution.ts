@@ -41,6 +41,8 @@ export function useExecution(deps: ExecutionDeps) {
       toast.notify('请先选择数据源。')
       return
     }
+    // 暂存更改门（F-17）：执行入口自询，脏状态下先保存或放弃
+    if (deps.results.blockedByPendingChanges()) return
     pendingSql.value = statement
     await run(source.id, statement)
   }

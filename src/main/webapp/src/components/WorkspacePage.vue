@@ -52,9 +52,9 @@ const execution = useExecution({
   },
 })
 const { sql, isRunning, canceling, pendingSql, pendingConfirmation, execute, confirmExecution, cancelExecution, cancelQuery } = execution
-// 结果表格编辑（F-17）：脏状态守卫 + 批次确认弹窗
+// 结果表格编辑（F-17）：批次确认弹窗（翻页/执行守卫已内化进 useResults/useExecution）
 const resultEditing = useResultEditing()
-const { blockedByPendingChanges, pendingBatch, confirmBatch, cancelBatch } = resultEditing
+const { pendingBatch, confirmBatch, cancelBatch } = resultEditing
 
 const editorRef = ref<EditorHandle | null>(null)
 const confirmDialog = ref<ConfirmHandle | null>(null)
@@ -117,24 +117,11 @@ watch(pendingBatch, (batch) => {
 })
 
 const executeFromToolbar = () => {
-  if (blockedByPendingChanges()) return
   void execute(editorRef.value?.executionText() ?? sql.value)
 }
 
-/** 编辑器快捷键执行（Ctrl ↵）与工具栏同守卫：暂存更改存在时先保存或放弃（F-17/Q7）。 */
 const handleEditorExecute = (text: string) => {
-  if (blockedByPendingChanges()) return
   void execute(text)
-}
-
-const changePageWithGuard = (target: number) => {
-  if (blockedByPendingChanges()) return
-  void results.changePage(target)
-}
-
-const changePageSizeWithGuard = (size: number) => {
-  if (blockedByPendingChanges()) return
-  void results.changePageSize(size)
 }
 
 const commitTransaction = () => {
@@ -156,7 +143,8 @@ const changeSource = (id: string) => {
   const current = selectedSource.value
   if (!current || id === current.id) return
   if (transaction.blockedByOpenTransaction()) return
-  if (blockedByPendingChanges()) return
+  // 切源与新查询是跨 module 意图，暂存门显式自询（F-17）
+  if (results.blockedByPendingChanges()) return
   dataSources.selectSource(id)
   results.reset()
   mobileSidebarOpen.value = false
@@ -201,7 +189,7 @@ const clearHistory = () => {
 }
 
 const newQuery = () => {
-  if (blockedByPendingChanges()) return
+  if (results.blockedByPendingChanges()) return
   sql.value = ''
   results.reset()
   nextTick(() => editorRef.value?.focusEditor())
@@ -349,8 +337,8 @@ onUnmounted(() => {
           :update-info="updateResult ?? undefined"
           :truncated="queryResult?.truncated ?? false"
           @tab-change="activeTab = $event"
-          @page-change="changePageWithGuard"
-          @page-size-change="changePageSizeWithGuard"
+          @page-change="results.changePage"
+          @page-size-change="results.changePageSize"
           @notify="notify"
         />
       </main>

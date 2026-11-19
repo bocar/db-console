@@ -153,10 +153,10 @@ describe('useResultEditing', () => {
     expect(results.queryResult.value?.editable).toEqual(editable)
   })
 
-  it('脏状态守卫拦截并提示，清空后放行', () => {
+  it('脏状态同步暂存门：暂存存在时结果生命周期拒绝翻页，清空后放行', () => {
     editing.addRow()
-    expect(editing.blockedByPendingChanges()).toBe(true)
+    expect(results.pendingChanges.value).toBe(true)
     editing.clearStaging()
-    expect(editing.blockedByPendingChanges()).toBe(false)
+    expect(results.pendingChanges.value).toBe(false)
   })
 })

@@ -13,6 +13,8 @@ const pageSize = ref(20)
 const isPaging = ref(false)
 const currentSourceId = ref('')
 const currentSql = ref('')
+/** 暂存更改门（F-17）：结果生命周期自持——脏状态下翻页/调页直接拒绝并提示。 */
+const pendingChanges = ref(false)
 let requestSerial = 0
 
 /** 结果区（F-08/F-11）：只保存服务端返回的当前页及原查询上下文。 */
@@ -59,6 +61,7 @@ export function useResults() {
   }
 
   async function loadPage(target: number, size: number): Promise<void> {
+    if (blockedByPendingChanges()) return
     const sourceId = currentSourceId.value
     const sql = currentSql.value
     if (!queryResult.value || !sourceId || !sql || isPaging.value) return
@@ -69,7 +72,19 @@ export function useResults() {
     await fetchPage(sourceId, sql, targetPage, size)
   }
 
-  /** 强制重取当前页（F-17 保存/放弃后回显）：绕过同页去重。 */
+  /** 暂存更改门开合（useResultEditing 同步）；守卫语义收口在本 module。 */
+  function setPendingChanges(pending: boolean): void {
+    pendingChanges.value = pending
+  }
+
+  /** 门守卫：true = 已拦截并提示（翻页/重执行/跨 module 意图的自询入口）。 */
+  function blockedByPendingChanges(): boolean {
+    if (!pendingChanges.value) return false
+    toast.notify('有未保存的表格更改，请先保存或放弃更改。')
+    return true
+  }
+
+  /** 强制重取当前页（F-17 保存/放弃后回显）：绕过同页去重与暂存门（调用方已清暂存）。 */
   async function reload(): Promise<void> {
     const sourceId = currentSourceId.value
     const sql = currentSql.value
@@ -130,6 +145,9 @@ export function useResults() {
     visibleColumns,
     elapsedMs,
     currentSourceId,
+    pendingChanges,
+    setPendingChanges,
+    blockedByPendingChanges,
     showQuery,
     showUpdate,
     changePage,

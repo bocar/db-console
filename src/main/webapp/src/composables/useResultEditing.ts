@@ -24,7 +24,6 @@ const editingCell = ref<{ rowKey: string; columnIndex: number } | null>(null)
 const editDraft = ref('')
 const saving = ref(false)
 const pendingBatch = ref<{ statements: ResultEditStatementPreview[] } | null>(null)
-let reloadingAfterSave = false
 
 /**
  * 结果表格编辑（F-17 / GLOSSARY：暂存更改）：新增行、单元格修改与待删除行的客户端暂存，
@@ -185,13 +184,6 @@ export function useResultEditing() {
     if (missing > 0) toast.notify(`${missing} 行缺少主键值，无法删除。`)
   }
 
-  /** 脏状态守卫（Q7）：翻页 / 重新执行 / 切数据源 / 调页大小前调用，true 表示已拦截并提示。 */
-  function blockedByPendingChanges(): boolean {
-    if (!dirty.value) return false
-    toast.notify('有未保存的表格更改，请先保存或放弃更改。')
-    return true
-  }
-
   function validateNewRows(): string | null {
     const editable = editableInfo.value
     if (!editable) return null
@@ -319,13 +311,9 @@ export function useResultEditing() {
   async function handleOutcome(response: ResultEditResponse): Promise<void> {
     if (response.kind === 'RESULT_EDIT_APPLIED') {
       toast.notify(`已提交 ${response.statements.length} 条变更。`)
+      // 先清暂存再重取：门先开，reload 不需要豁免标志
       clearStaging()
-      reloadingAfterSave = true
-      try {
-        await results.reload()
-      } finally {
-        reloadingAfterSave = false
-      }
+      await results.reload()
       return
     }
     if (response.kind === 'RESULT_EDIT_FAILED') {
@@ -343,12 +331,7 @@ export function useResultEditing() {
   async function discardChanges(): Promise<void> {
     if (!dirty.value) return
     clearStaging()
-    reloadingAfterSave = true
-    try {
-      await results.reload()
-    } finally {
-      reloadingAfterSave = false
-    }
+    await results.reload()
     toast.notify('已放弃全部未保存更改，并重新加载当前页。')
   }
 
@@ -361,13 +344,16 @@ export function useResultEditing() {
     pendingBatch.value = null
   }
 
-  // 查询结果被整体替换（新查询/新数据源）时暂存随之失效；守卫使其通常不可达，防御性清空
+  // 查询结果被整体替换（新查询/新数据源）时暂存随之失效；守卫使其通常不可达，防御性清空。
+  // 保存/放弃路径先清暂存再 reload，此 watch 的再次清空是幂等的——无需时序豁免标志。
   watch(
     () => results.queryResult.value,
-    () => {
-      if (!reloadingAfterSave) clearStaging()
-    },
+    () => clearStaging(),
   )
+
+  // 暂存门同步（F-17）：守卫语义收口在结果生命周期 module（useResults）；
+  // sync 刷新——不允许出现「暂存已存在而门未合」的窗口
+  watch(dirty, (pending) => results.setPendingChanges(pending), { flush: 'sync' })
 
   return {
     editableInfo,
@@ -394,7 +380,6 @@ export function useResultEditing() {
     deleteSelectedRows,
     validateNewRows,
     buildRequest,
-    blockedByPendingChanges,
     save,
     confirmBatch,
     cancelBatch,
