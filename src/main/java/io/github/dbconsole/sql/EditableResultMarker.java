@@ -1,6 +1,5 @@
 package io.github.dbconsole.sql;
 
-import io.github.dbconsole.dialect.SingleTableSelectAnalyzer;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
 import io.github.dbconsole.metadata.TableStructureService;
@@ -39,19 +38,14 @@ class EditableResultMarker {
       ResolvedDataSource source,
       String sql,
       SqlResponses.QueryResult result) {
-    SingleTableSelectAnalyzer analyzer =
-        SingleTableSelectAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
-    List<String> tableParts = analyzer.detect(sql).orElse(null);
+    List<String> tableParts = source.dialect().singleTableAnalyzer().detect(sql).orElse(null);
     if (tableParts == null) {
       return result;
     }
     TableStructure structure;
     try {
       structure =
-          tableStructures
-              .columnStructure(
-                  connection, source.databaseType(), source.compatibilityMode(), tableParts)
-              .orElse(null);
+          tableStructures.columnStructure(connection, source.dialect(), tableParts).orElse(null);
     } catch (RuntimeException exception) {
       // 标记绝不破坏查询展示（fail-closed 降级），原因留痕
       log.warn("可编辑标记降级 sourceId={} table={} 原因={}",

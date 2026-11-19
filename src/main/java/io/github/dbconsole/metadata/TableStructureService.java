@@ -2,7 +2,7 @@ package io.github.dbconsole.metadata;
 
 import io.github.dbconsole.config.DbConsoleProperties.CompatibilityMode;
 import io.github.dbconsole.config.DbConsoleProperties.DatabaseType;
-import io.github.dbconsole.dialect.DialectFamily;
+import io.github.dbconsole.dialect.Dialect;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
@@ -90,20 +90,15 @@ public class TableStructureService {
    * 全小写依次尝试（DM8 存储为大写），均无结果返回空。
    */
   public Optional<ResolvedColumnStructure> resolveColumnStructure(
-      String sourceId, DatabaseType databaseType, CompatibilityMode compatibilityMode,
-      List<String> tableParts) {
+      String sourceId, Dialect dialect, List<String> tableParts) {
     if (tableParts == null || tableParts.isEmpty()) {
       return Optional.empty();
     }
     ResolvedDataSource source = registry.resolve(sourceId);
     try (Connection connection = connections.open(source)) {
       return columnStructure(
-          connection.getMetaData(),
-          connection.getCatalog(),
-          connection.getSchema(),
-          databaseType,
-          compatibilityMode,
-          tableParts);
+          connection.getMetaData(), connection.getCatalog(), connection.getSchema(),
+          dialect, tableParts);
     } catch (SQLException exception) {
       throw new MetadataException("表结构读取失败：" + exception.getMessage(), exception);
     }
@@ -111,19 +106,14 @@ public class TableStructureService {
 
   /** 搭用已有连接的轻量结构读取（F-17 可编辑标记：不新开连接）。 */
   public Optional<TableStructure> columnStructure(
-      Connection connection, DatabaseType databaseType, CompatibilityMode compatibilityMode,
-      List<String> tableParts) {
+      Connection connection, Dialect dialect, List<String> tableParts) {
     if (tableParts == null || tableParts.isEmpty()) {
       return Optional.empty();
     }
     try {
       return columnStructure(
-              connection.getMetaData(),
-              connection.getCatalog(),
-              connection.getSchema(),
-              databaseType,
-              compatibilityMode,
-              tableParts)
+              connection.getMetaData(), connection.getCatalog(), connection.getSchema(),
+              dialect, tableParts)
           .map(ResolvedColumnStructure::structure);
     } catch (SQLException exception) {
       throw new MetadataException("表结构读取失败：" + exception.getMessage(), exception);
@@ -134,10 +124,9 @@ public class TableStructureService {
       DatabaseMetaData meta,
       String connectionCatalog,
       String connectionSchema,
-      DatabaseType databaseType,
-      CompatibilityMode compatibilityMode,
+      Dialect dialect,
       List<String> tableParts) throws SQLException {
-    boolean mysqlFamily = DialectFamily.isMysqlFamily(databaseType, compatibilityMode);
+    boolean mysqlFamily = dialect.mysqlFamily();
     for (List<String> parts :
         List.of(tableParts, upperCased(tableParts), lowerCased(tableParts))) {
       String table = parts.get(parts.size() - 1);

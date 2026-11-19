@@ -1,6 +1,7 @@
 package io.github.dbconsole.resultedit;
 
 import io.github.dbconsole.config.DbConsoleProperties;
+import io.github.dbconsole.dialect.Dialect;
 import io.github.dbconsole.dialect.ResultEditSql;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
@@ -59,9 +60,7 @@ public class ResultEditService {
     }
     TableStructureService.ResolvedColumnStructure resolved =
         tableStructures
-            .resolveColumnStructure(
-                source.id(), source.databaseType(), source.compatibilityMode(),
-                request.tableParts())
+            .resolveColumnStructure(source.id(), source.dialect(), request.tableParts())
             .orElseThrow(
                 () ->
                     new SqlRejectException(
@@ -87,6 +86,7 @@ public class ResultEditService {
       List<String> primaryKeys,
       ResultEditRequest request,
       List<String> statementTableParts) {
+    Dialect dialect = source.dialect();
     Map<String, TableStructure.ColumnDefinition> tableColumns = columnsByLowerName(structure);
     List<ResultEditExecutor.PlannedStatement> planned = new ArrayList<>();
     for (int index = 0; index < request.deletes().size(); index++) {
@@ -97,8 +97,7 @@ public class ResultEditService {
           new ResultEditExecutor.PlannedStatement(
               index,
               ResultEditSql.delete(
-                  source.databaseType(), source.compatibilityMode(),
-                  statementTableParts, key.columns(), key.values())));
+                  dialect, statementTableParts, key.columns(), key.values())));
     }
     for (int index = 0; index < request.updates().size(); index++) {
       ResultEditRequest.UpdateChange change = request.updates().get(index);
@@ -126,7 +125,7 @@ public class ResultEditService {
           new ResultEditExecutor.PlannedStatement(
               index,
               ResultEditSql.update(
-                  source.databaseType(), source.compatibilityMode(),
+                  dialect,
                   statementTableParts, key.columns(), key.values(), setColumns, setValues)));
     }
     for (int index = 0; index < request.inserts().size(); index++) {
@@ -150,8 +149,7 @@ public class ResultEditService {
           new ResultEditExecutor.PlannedStatement(
               index,
               ResultEditSql.insert(
-                  source.databaseType(), source.compatibilityMode(),
-                  statementTableParts, insertColumns, insertValues)));
+                  dialect, statementTableParts, insertColumns, insertValues)));
     }
     return planned;
   }

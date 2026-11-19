@@ -6,7 +6,6 @@ import io.github.dbconsole.dialect.RejectedSql;
 import io.github.dbconsole.dialect.ResultEditSql;
 import io.github.dbconsole.dialect.SqlAnalysisResult;
 import io.github.dbconsole.dialect.SqlStatement;
-import io.github.dbconsole.dialect.SqlStatementAnalyzer;
 import io.github.dbconsole.dialect.StatementKind;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
@@ -270,9 +269,7 @@ public class ExecutionOrchestrator {
   private Precheck precheck(String sourceId, String sql) {
     rejectIfTooLong(sql);
     ResolvedDataSource source = registry.resolve(sourceId);
-    SqlStatementAnalyzer analyzer =
-        SqlStatementAnalyzer.forDialect(source.databaseType(), source.compatibilityMode());
-    SqlAnalysisResult analysis = analyzer.analyze(sql);
+    SqlAnalysisResult analysis = source.dialect().analyzer().analyze(sql);
     if (analysis instanceof RejectedSql rejected) {
       throw new SqlRejectException("INVALID_SQL", rejected.message());
     }

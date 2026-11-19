@@ -41,8 +41,7 @@ class EditableResultMarkerTest {
   private void structureReturns(TableStructure structure) {
     when(tableStructures.columnStructure(
             org.mockito.ArgumentMatchers.eq(connection),
-            org.mockito.ArgumentMatchers.eq(DatabaseType.MYSQL),
-            org.mockito.ArgumentMatchers.eq(CompatibilityMode.NATIVE),
+            org.mockito.ArgumentMatchers.any(io.github.dbconsole.dialect.Dialect.class),
             anyList()))
         .thenReturn(Optional.of(structure));
   }
@@ -97,8 +96,7 @@ class EditableResultMarkerTest {
           "jdbc:dm://x", "user", "secret");
       when(tableStructures.columnStructure(
               org.mockito.ArgumentMatchers.eq(connection),
-              org.mockito.ArgumentMatchers.eq(DatabaseType.DM8),
-              org.mockito.ArgumentMatchers.eq(CompatibilityMode.NATIVE),
+              org.mockito.ArgumentMatchers.any(io.github.dbconsole.dialect.Dialect.class),
               anyList()))
           .thenReturn(Optional.of(table(
               column("ID", true, false, false), column("NAME", false, true, false))));
@@ -152,8 +150,7 @@ class EditableResultMarkerTest {
     void invisibleTableDegrades() {
       when(tableStructures.columnStructure(
               org.mockito.ArgumentMatchers.any(java.sql.Connection.class),
-              org.mockito.ArgumentMatchers.any(),
-              org.mockito.ArgumentMatchers.any(),
+              org.mockito.ArgumentMatchers.any(io.github.dbconsole.dialect.Dialect.class),
               anyList()))
           .thenReturn(Optional.empty());
 
@@ -165,8 +162,7 @@ class EditableResultMarkerTest {
     void metadataFailureDegrades() {
       when(tableStructures.columnStructure(
               org.mockito.ArgumentMatchers.any(java.sql.Connection.class),
-              org.mockito.ArgumentMatchers.any(),
-              org.mockito.ArgumentMatchers.any(),
+              org.mockito.ArgumentMatchers.any(io.github.dbconsole.dialect.Dialect.class),
               anyList()))
           .thenThrow(new MetadataException("对象结构读取失败：down", new RuntimeException("down")));
 

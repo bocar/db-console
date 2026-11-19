@@ -86,7 +86,7 @@ class ResultEditServiceTest {
 
   private void structureVisible(String sourceId) {
     when(tableStructures.resolveColumnStructure(
-            eq(sourceId), any(), any(), anyList()))
+            eq(sourceId), org.mockito.ArgumentMatchers.any(io.github.dbconsole.dialect.Dialect.class), anyList()))
         .thenReturn(Optional.of(
             new io.github.dbconsole.metadata.TableStructureService.ResolvedColumnStructure(
                 List.of("orders"), table())));
@@ -145,7 +145,7 @@ class ResultEditServiceTest {
     @Test
     @DisplayName("来源表不可见时拒绝")
     void rejectsInvisibleTable() {
-      when(tableStructures.resolveColumnStructure(eq(DEV_SOURCE), any(), any(), anyList()))
+      when(tableStructures.resolveColumnStructure(eq(DEV_SOURCE), org.mockito.ArgumentMatchers.any(io.github.dbconsole.dialect.Dialect.class), anyList()))
           .thenReturn(Optional.empty());
 
       assertThatThrownBy(() -> service().save(SESSION_TOKEN, USERNAME, request(DEV_SOURCE)))

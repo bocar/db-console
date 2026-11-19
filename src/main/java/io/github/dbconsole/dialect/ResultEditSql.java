@@ -22,26 +22,26 @@ public final class ResultEditSql {
 
   /** DELETE：主键列按序并列定位。 */
   public static Generated delete(
-      DatabaseType type, CompatibilityMode mode,
+      Dialect dialect,
       List<String> tableParts, List<String> keyColumns, List<Object> keyValues) {
     String sql =
-        "DELETE FROM " + qualified(type, mode, tableParts) + whereByKey(type, mode, keyColumns);
+        "DELETE FROM " + dialect.quoteQualified(tableParts) + whereByKey(dialect, keyColumns);
     return new Generated(sql, copyNullable(keyValues), StatementKind.DELETE);
   }
 
   /** UPDATE：仅变更列进 SET，主键定位在 WHERE；参数序 = SET 值 + 主键值。 */
   public static Generated update(
-      DatabaseType type, CompatibilityMode mode,
+      Dialect dialect,
       List<String> tableParts,
       List<String> keyColumns, List<Object> keyValues,
       List<String> setColumns, List<Object> setValues) {
     StringJoiner assignments = new StringJoiner(", ");
     for (String column : setColumns) {
-      assignments.add(quote(type, mode, column) + " = ?");
+      assignments.add(dialect.quoteIdentifier(column) + " = ?");
     }
     String sql =
-        "UPDATE " + qualified(type, mode, tableParts)
-            + " SET " + assignments + whereByKey(type, mode, keyColumns);
+        "UPDATE " + dialect.quoteQualified(tableParts)
+            + " SET " + assignments + whereByKey(dialect, keyColumns);
     List<Object> params = new ArrayList<>(setValues.size() + keyValues.size());
     params.addAll(setValues);
     params.addAll(keyValues);
@@ -50,16 +50,16 @@ public final class ResultEditSql {
 
   /** INSERT：仅携带提供值的列，其余走库端默认。 */
   public static Generated insert(
-      DatabaseType type, CompatibilityMode mode,
+      Dialect dialect,
       List<String> tableParts, List<String> columns, List<Object> values) {
     StringJoiner quotedColumns = new StringJoiner(", ");
     StringJoiner placeholders = new StringJoiner(", ");
     for (String column : columns) {
-      quotedColumns.add(quote(type, mode, column));
+      quotedColumns.add(dialect.quoteIdentifier(column));
       placeholders.add("?");
     }
     String sql =
-        "INSERT INTO " + qualified(type, mode, tableParts)
+        "INSERT INTO " + dialect.quoteQualified(tableParts)
             + " (" + quotedColumns + ") VALUES (" + placeholders + ")";
     return new Generated(sql, copyNullable(values), StatementKind.INSERT);
   }
@@ -113,11 +113,10 @@ public final class ResultEditSql {
     return escaped.toString();
   }
 
-  private static String whereByKey(
-      DatabaseType type, CompatibilityMode mode, List<String> keyColumns) {
+  private static String whereByKey(Dialect dialect, List<String> keyColumns) {
     StringJoiner predicates = new StringJoiner(" AND ");
     for (String column : keyColumns) {
-      predicates.add(quote(type, mode, column) + " = ?");
+      predicates.add(dialect.quoteIdentifier(column) + " = ?");
     }
     return " WHERE " + predicates;
   }
