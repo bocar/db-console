@@ -51,4 +51,18 @@ public class SqlConfig {
         registry, confirmations, runningQueries, transactions, tableStructures, audit, properties,
         statementExecution);
   }
+
+  /** 语句执行编舞（F-17 深化第一笔）：确认门、登记、审计、终态分类的唯一漏斗。 */
+  @Bean
+  public ExecutionOrchestrator executionOrchestrator(
+      ConfirmationService confirmations,
+      RunningQueryRegistry runningQueries,
+      AuditService audit,
+      TransactionManager transactions,
+      DbConsoleProperties properties,
+      ConnectionFactory connections) {
+    return new ExecutionOrchestrator(
+        confirmations, runningQueries, audit, transactions, properties,
+        new ResultEditExecutor(connections));
+  }
 }

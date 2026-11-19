@@ -1,11 +1,13 @@
 package io.github.dbconsole.resultedit;
 
+import io.github.dbconsole.sql.TerminalResponse;
 import java.util.List;
 
 /** 结果编辑保存响应的密封层次（wire 契约与前端 types.ts 对齐，F-17）。 */
-public sealed interface ResultEditResponses {
+public sealed interface ResultEditResponses extends TerminalResponse {
 
   /** 审计终态（F-10）：由响应变体穷尽定义。 */
+  @Override
   String auditStatus();
 
   /** 全部语句已在单一短事务内提交。 */

@@ -3,9 +3,10 @@ package io.github.dbconsole.sql;
 import java.util.List;
 
 /** 执行响应的密封层次（wire 契约与前端 types.ts 对齐）。 */
-public sealed interface SqlResponses {
+public sealed interface SqlResponses extends TerminalResponse {
 
   /** 审计终态（F-10）：由响应变体穷尽定义，调用方不得自行拼装状态串。 */
+  @Override
   String auditStatus();
 
   /** 查询结果：列名 + 按列位置的行（零行保留列名），大整数与高精度小数以字符串保精度。 */

@@ -1,10 +1,11 @@
-package io.github.dbconsole.resultedit;
+package io.github.dbconsole.sql;
 
 import io.github.dbconsole.dialect.ResultEditSql;
 import io.github.dbconsole.dialect.StatementKind;
 import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.ConnectionFailureKind;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
+import io.github.dbconsole.resultedit.ResultEditResponses;
 import io.github.dbconsole.sql.RunningQuery;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -22,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * 写入或提交的超时、断连与取消意图归为执行结果未知（F-10，不自动重试）。
  * 语句间检查取消意图，当前语句通过挂载的 PreparedStatement 支持取消。
  */
-class ResultEditExecutor {
+public class ResultEditExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(ResultEditExecutor.class);
   private static final int DRIVER_MESSAGE_LIMIT = 500;
@@ -34,7 +35,7 @@ class ResultEditExecutor {
   }
 
   /** 已规划的单条语句：段内序号与生成结果（所属段由 kind().name() 派生）。 */
-  record PlannedStatement(int changeIndex, ResultEditSql.Generated generated) {
+  public record PlannedStatement(int changeIndex, ResultEditSql.Generated generated) {
 
     /** 所属变更段的 wire 名（DELETE/UPDATE/INSERT）。 */
     String section() {
@@ -42,7 +43,7 @@ class ResultEditExecutor {
     }
   }
 
-  ResultEditResponses execute(
+  public ResultEditResponses execute(
       ResolvedDataSource source,
       List<PlannedStatement> planned,
       RunningQuery running,

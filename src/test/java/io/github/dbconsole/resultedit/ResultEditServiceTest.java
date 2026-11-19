@@ -21,6 +21,8 @@ import io.github.dbconsole.metadata.TableStructure;
 import io.github.dbconsole.metadata.TableStructureService;
 import io.github.dbconsole.sql.ConfirmationService;
 import io.github.dbconsole.sql.RunningQueryRegistry;
+import io.github.dbconsole.sql.ExecutionOrchestrator;
+import io.github.dbconsole.sql.ResultEditExecutor;
 import io.github.dbconsole.sql.SqlRejectException;
 import io.github.dbconsole.transaction.TransactionManager;
 import io.github.dbconsole.transaction.TransactionStateException;
@@ -35,7 +37,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-/** 结果编辑保存编排测试（F-17）：互斥、上限、重校验、确认门与审计时机。 */
+/** 结果编辑保存策略测试（F-17）：上限、重校验、规划与确认回路（经真实编舞）。 */
 class ResultEditServiceTest {
 
   private static final String SESSION_TOKEN = "session-token";
@@ -59,10 +61,13 @@ class ResultEditServiceTest {
 
   private ResultEditService service() {
     DataSourceRegistry registry = new DataSourceRegistry(properties, ref -> "db-secret");
-    return new ResultEditService(
-        registry, confirmations, transactions, tableStructures,
-        new RunningQueryRegistry(properties.execution().maxConcurrency()),
-        audit, properties, executor);
+    // 真实编舞 + mock 执行 arm：策略测试经 run() 全链路，执行终态可控
+    ExecutionOrchestrator orchestrator =
+        new ExecutionOrchestrator(
+            confirmations,
+            new RunningQueryRegistry(properties.execution().maxConcurrency()),
+            audit, transactions, properties, executor);
+    return new ResultEditService(registry, tableStructures, properties, orchestrator);
   }
 
   private static TableStructure table() {
@@ -104,8 +109,9 @@ class ResultEditServiceTest {
   class Guards {
 
     @Test
-    @DisplayName("存在未提交手动事务时拒绝，不进入校验与审计（F-16 互斥）")
+    @DisplayName("存在未提交手动事务时编舞拒绝执行，不落审计（F-16 互斥在编舞内）")
     void rejectsOpenTransaction() {
+      structureVisible(DEV_SOURCE);
       doThrowForOpenTransaction();
 
       assertThatThrownBy(

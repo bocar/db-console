@@ -1,4 +1,4 @@
-package io.github.dbconsole.resultedit;
+package io.github.dbconsole.sql;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -14,7 +14,7 @@ import io.github.dbconsole.jdbc.ConnectionFactory;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.dialect.ResultEditSql;
 import io.github.dbconsole.dialect.StatementKind;
-import io.github.dbconsole.sql.RunningQuery;
+import io.github.dbconsole.resultedit.ResultEditResponses;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;

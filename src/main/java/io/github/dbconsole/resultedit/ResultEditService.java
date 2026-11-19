@@ -1,19 +1,15 @@
 package io.github.dbconsole.resultedit;
 
-import io.github.dbconsole.audit.AuditService;
 import io.github.dbconsole.config.DbConsoleProperties;
 import io.github.dbconsole.dialect.ResultEditSql;
-import io.github.dbconsole.dialect.SqlStatement;
 import io.github.dbconsole.jdbc.DataSourceRegistry;
 import io.github.dbconsole.jdbc.ResolvedDataSource;
 import io.github.dbconsole.metadata.TableStructure;
 import io.github.dbconsole.metadata.TableStructureService;
-import io.github.dbconsole.sql.ConfirmationDecision;
-import io.github.dbconsole.sql.ConfirmationService;
-import io.github.dbconsole.sql.RunningQuery;
-import io.github.dbconsole.sql.RunningQueryRegistry;
+import io.github.dbconsole.sql.ExecutionForm;
+import io.github.dbconsole.sql.ExecutionOrchestrator;
+import io.github.dbconsole.sql.ResultEditExecutor;
 import io.github.dbconsole.sql.SqlRejectException;
-import io.github.dbconsole.transaction.TransactionManager;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,49 +18,37 @@ import java.util.Map;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 结果编辑保存编排（F-17 / ADR-0006）：暂存更改 → 服务端重校验（数量上限、列与主键
- * 对照最新表结构）→ 按方言生成参数化语句（删除 → 更新 → 新增）→ 逐语句确认判定与
- * 凭据签发/校验（绑定文本 = 语句 + 参数渲染，值变即失效）→ 批次短事务执行 → 审计。
- * 无状态：两次调用（确认前/后）由同一请求确定性重建语句，凭据校验即等价校验重建结果。
+ * 结果编辑保存策略（F-17 / ADR-0006）：暂存更改 → 服务端重校验（数量上限、列与主键
+ * 对照最新表结构）→ 按方言生成参数化语句（删除 → 更新 → 新增），随后构造批次执行形态
+ * 交 {@link ExecutionOrchestrator} 编舞（互斥守卫、汇总确认门、登记、审计、终态分类
+ * 已内化于编舞）。无状态：两次调用（确认前/后）由同一请求确定性重建语句，
+ * 凭据校验即等价校验重建结果。
  */
 public class ResultEditService {
 
+  /** 与手动事务互斥的守卫文案随形态（策略）携带，编舞负责执行守卫。 */
   private static final String MUTEX_MESSAGE =
       "结果编辑保存使用独立短事务，请先提交或回滚当前事务";
 
   private final DataSourceRegistry registry;
-  private final ConfirmationService confirmations;
-  private final TransactionManager transactions;
   private final TableStructureService tableStructures;
-  private final RunningQueryRegistry runningQueries;
-  private final AuditService audit;
   private final DbConsoleProperties properties;
-  private final ResultEditExecutor executor;
+  private final ExecutionOrchestrator orchestrator;
 
   public ResultEditService(
       DataSourceRegistry registry,
-      ConfirmationService confirmations,
-      TransactionManager transactions,
       TableStructureService tableStructures,
-      RunningQueryRegistry runningQueries,
-      AuditService audit,
       DbConsoleProperties properties,
-      ResultEditExecutor executor) {
+      ExecutionOrchestrator orchestrator) {
     this.registry = registry;
-    this.confirmations = confirmations;
-    this.transactions = transactions;
     this.tableStructures = tableStructures;
-    this.runningQueries = runningQueries;
-    this.audit = audit;
     this.properties = properties;
-    this.executor = executor;
+    this.orchestrator = orchestrator;
   }
 
   public ResultEditResponses save(
       String sessionToken, String username, ResultEditRequest request) {
     ResolvedDataSource source = registry.resolve(request.sourceId());
-    // 与手动事务互斥（F-16/F-17）：保存走独立连接上的单一短事务
-    transactions.requireNoOpenTransaction(sessionToken, source.id(), MUTEX_MESSAGE);
     int maxChanges = properties.resultEdit().maxChangesPerSave();
     if (request.changeCount() > maxChanges) {
       throw new SqlRejectException(
@@ -89,30 +73,11 @@ public class ResultEditService {
     // 语句标识符必须用元数据命中的大小写形态（引号标识符在 DM8/Oracle 系大小写敏感）
     List<ResultEditExecutor.PlannedStatement> planned =
         plan(source, resolved.structure(), primaryKeys, request, resolved.resolvedParts());
-    ResultEditResponses confirmation = confirmationPhase(source, sessionToken, planned, request);
-    if (confirmation != null) {
-      return confirmation;
-    }
-    // 执行阶段（与单语句路径同惯例：预校验拒绝与确认要求不落审计，真正执行才审计）
-    RunningQuery running = runningQueries.register(sessionToken, source.id());
-    long startedAt = System.nanoTime();
-    try {
-      ResultEditResponses response;
-      try {
-        response = executor.execute(source, planned, running, timeoutSeconds());
-      } catch (RuntimeException exception) {
-        audit.recordExecution(
-            username, source.id(), auditSummary(request),
-            elapsedMillisSince(startedAt), "FAILED");
-        throw exception;
-      }
-      audit.recordExecution(
-          username, source.id(), auditSummary(request),
-          elapsedMillisSince(startedAt), response.auditStatus());
-      return response;
-    } finally {
-      runningQueries.complete(running);
-    }
+    // 编舞（互斥守卫、汇总确认门、登记、审计、终态分类）收口在 ExecutionOrchestrator
+    return orchestrator.run(
+        new ExecutionForm.EditBatchForm(
+            source, sessionToken, username, MUTEX_MESSAGE, planned,
+            request.confirmationTokens()));
   }
 
   /** 重校验并生成语句（确定性：同一请求两次调用产出完全一致的语句与绑定文本）。 */
@@ -189,45 +154,6 @@ public class ResultEditService {
                   statementTableParts, insertColumns, insertValues)));
     }
     return planned;
-  }
-
-  /**
-   * 确认阶段（F-09 + F-17 裁决 2026-11-18）：每次保存都先经一次汇总确认——逐条签发
-   * 「会话 + 数据源 + 语句 + 参数渲染」绑定凭据，任一凭据未校验通过即返回完整预览并
-   * 停止执行；全部通过才进入批次执行。风险标注（reason）按 F-09 逐条判定（生产写等），
-   * 无风险的语句不标注但仍参与绑定与校验。
-   */
-  private ResultEditResponses confirmationPhase(
-      ResolvedDataSource source,
-      String sessionToken,
-      List<ResultEditExecutor.PlannedStatement> planned,
-      ResultEditRequest request) {
-    List<ResultEditResponses.StatementPreview> previews = new ArrayList<>(planned.size());
-    boolean anyPending = false;
-    for (int index = 0; index < planned.size(); index++) {
-      ResultEditExecutor.PlannedStatement statement = planned.get(index);
-      ResultEditSql.Generated generated = statement.generated();
-      ConfirmationDecision.Requirement requirement =
-          ConfirmationDecision.evaluate(
-              source.environment(), new SqlStatement(generated.kind(), true));
-      String reason =
-          requirement == ConfirmationDecision.Requirement.NOT_REQUIRED
-              ? null
-              : requirement.name();
-      String token = null;
-      String bound = ResultEditSql.boundText(generated.sql(), generated.params());
-      String presented = request.tokenAt(index);
-      if (presented == null
-          || !confirmations.verify(sessionToken, source.id(), bound, presented)) {
-        token = confirmations.issue(sessionToken, source.id(), bound);
-        anyPending = true;
-      }
-      previews.add(
-          new ResultEditResponses.StatementPreview(
-              index, statement.section(), statement.changeIndex(),
-              generated.sql(), generated.params(), reason, token));
-    }
-    return anyPending ? new ResultEditResponses.ConfirmationRequired(previews) : null;
   }
 
   private record KeyAndValues(List<String> columns, List<Object> values) {}
@@ -308,18 +234,4 @@ public class ResultEditService {
     return byLowerName;
   }
 
-  /** 审计摘要（F-10 不含完整 SQL 与数据）：段计数指纹即可定位一次保存的规模。 */
-  private static String auditSummary(ResultEditRequest request) {
-    return "结果编辑保存 DELETE " + request.deletes().size()
-        + " / UPDATE " + request.updates().size()
-        + " / INSERT " + request.inserts().size();
-  }
-
-  private int timeoutSeconds() {
-    return Math.max(1, (int) properties.execution().timeout().toSeconds());
-  }
-
-  private static long elapsedMillisSince(long startedAt) {
-    return (System.nanoTime() - startedAt) / 1_000_000;
-  }
 }
