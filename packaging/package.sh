@@ -11,7 +11,7 @@
 #   ./packaging/package.sh --arch aarch64     # 只打鲲鹏/飞腾（ARM64）
 #   ./packaging/package.sh --arch x64         # 只打海光/兆芯（x86_64）
 #   ./packaging/package.sh --build            # 强制重新 mvn package（默认仅 JAR 缺失时构建）
-#   ./packaging/package.sh --no-build         # 只使用现有 target/db-console.jar
+#   ./packaging/package.sh --no-build         # 只使用现有 target/db-console-exec.jar
 #
 # JDK 17 原始包（毕昇/Kona/Dragonwell 等，Linux 版压缩包）放入 packaging/packages/，
 # 文件名包含 aarch64 / x64（或 x86_64、amd64）即可被识别；也可用环境变量指定：
@@ -25,7 +25,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PACKAGES_DIR="$SCRIPT_DIR/packages"
 OUT_DIR="$SCRIPT_DIR/out"
-JAR_PATH="$REPO_ROOT/target/db-console.jar"
+# 可执行 fat jar(spring-boot repackage 的 exec 分类器产物;普通 jar 主构件不作交付,见 docs/adr/0007)
+JAR_PATH="$REPO_ROOT/target/db-console-exec.jar"
 
 ARCH_FLAG="all"
 BUILD_MODE="auto"
@@ -105,7 +106,7 @@ build_jar() {
   major=$(java_major "$jbin")
   [ "$major" -ge 17 ] 2>/dev/null \
     || die "构建 db-console 需要 JDK 17+，当前构建机 java 主版本为 ${major}。
-请在装有 JDK 17 的机器上执行打包，或用 --no-build 复用已构建的 target/db-console.jar"
+请在装有 JDK 17 的机器上执行打包，或用 --no-build 复用已构建的 target/db-console-exec.jar"
   printf '==> 构建可执行 JAR（跳过测试；发布前检查请另行执行 mvn clean verify）\n'
   (cd "$REPO_ROOT" && mvn -B -ntp -DskipTests clean package)
 }

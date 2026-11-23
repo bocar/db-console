@@ -14,7 +14,7 @@ RUN useradd --system --uid 10001 dbconsole \
     && mkdir -p /config /audit \
     && chown -R dbconsole:dbconsole /app /audit
 
-COPY --from=build --chown=dbconsole:dbconsole /workspace/target/db-console.jar /app/db-console.jar
+COPY --from=build --chown=dbconsole:dbconsole /workspace/target/db-console-exec.jar /app/db-console.jar
 
 ENV SPRING_CONFIG_ADDITIONAL_LOCATION="file:/config/db-console.yml,file:/config/datasources.yml"
 

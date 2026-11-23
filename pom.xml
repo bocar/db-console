@@ -188,9 +188,13 @@
           </execution>
         </executions>
       </plugin>
+      <!-- 双产物(ADR-0007):主构件为普通 jar(可被其他项目依赖),exec 分类器产出可执行 fat jar -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <classifier>exec</classifier>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

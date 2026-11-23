@@ -23,13 +23,13 @@ JDK 17（毕昇/Kona/Dragonwell），解压即用；运行不探测系统 java�
 
 2. **打包**。构建机需要 JDK 17 与 Maven 3.9+（仅在 `--build` 或自动构建时需要；
    运行机不需要任何 Java）。构建机只有 JDK 8 时脚本会直接拦截并提示，此时可用
-   `--no-build` 复用已在 JDK 17 机器上构建好的 `target/db-console.jar`：
+   `--no-build` 复用已在 JDK 17 机器上构建好的 `target/db-console-exec.jar`：
 
    ```bash
    ./packaging/package.sh                  # 所有已就绪架构（JAR 缺失时自动构建）
    ./packaging/package.sh --arch aarch64   # 只打指定架构
    ./packaging/package.sh --build          # 强制重新构建 JAR（含前端）
-   ./packaging/package.sh --no-build       # 只打包现有 target/db-console.jar
+   ./packaging/package.sh --no-build       # 只打包现有 target/db-console-exec.jar
    ```
 
    产物在 `packaging/out/`：`db-console-<版本>-linux-<架构>.tar.gz` 及 `.sha256`

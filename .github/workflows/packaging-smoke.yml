@@ -30,7 +30,7 @@ jobs:
       - name: Prepare stub inputs (JAR + JDK 17 tarballs)
         run: |
           mkdir -p target packaging/packages
-          echo 'stub jar for packaging smoke' > target/db-console.jar
+          echo 'stub jar for packaging smoke' > target/db-console-exec.jar
           stub_jdk() {
             arch="$1"; ver="$2"
             d="$(mktemp -d)"

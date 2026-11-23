@@ -78,7 +78,7 @@ export SPRING_CONFIG_ADDITIONAL_LOCATION="file:${DB_CONSOLE_APP_CONFIG},file:${D
 
 ```bash
 mvn clean package
-java -jar target/db-console.jar
+java -jar target/db-console-exec.jar
 ```
 
 ### Docker
@@ -125,3 +125,36 @@ bin/start.sh --dry-run                                           # 自检：JDK 
 bin/start.sh                                                     # 前台启动；--daemon 后台；systemd 部署见 DEPLOY.md
 bin/status.sh                                                    # 状态检查（退出码 0/1/2 供监控用）
 ```
+
+## 作为 Maven 依赖引入
+
+`mvn package` 产出双构件（决策见 [ADR-0007](docs/adr/0007-dual-artifact-maven-packaging.md)）：主构件 `db-console` 为**普通 jar**（可被其他项目依赖，含前端静态资源与全部传递依赖），`-exec` 分类器为可执行 fat jar（上述部署方式使用的就是它）。执行 `mvn install` 后两份构件进入本机 Maven 仓库。
+
+### Spring Boot 3 项目：类路径内嵌
+
+宿主需为 Spring Boot 3.x + Java 17。引入普通 jar：
+
+```xml
+<dependency>
+  <groupId>io.github.dbconsole</groupId>
+  <artifactId>db-console</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
+本项目未提供自动装配（暂缓决策见 ADR-0007），宿主启动类扫描本项目的包、排除自带应用类并启用属性绑定：
+
+```java
+@SpringBootApplication(exclude = DataSourceAutoConfiguration.class) // 宿主自身无 DataSource 时排除
+@ComponentScan(basePackages = "io.github.dbconsole",
+    excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE,
+        classes = DbConsoleApplication.class))
+@EnableConfigurationProperties(DbConsoleProperties.class)
+public class HostApplication {}
+```
+
+按「外部配置」同样维护 `db-console.*` 两份配置后，控制台页面与 `/api/**` 即挂载于宿主应用：登录会话拦截（`WebConfig`）、手动事务空闲回滚（`@EnableScheduling` 随 `TransactionConfig` 生效）、审计写入全部照常。注意：控制台前端资源落在 `classpath:/static`，宿主自有静态首页会与之冲突。
+
+### Spring Boot 2.x 项目：独立进程部署
+
+Boot 2（javax / Spring 5.3 / Java 8-11）与本项目（Boot 3.4 / jakarta / Spring 6 / Java 17，records 与 sealed 语法）无法共存于同一 JVM 类路径——ADR-0005 已否决降级分支，ADR-0007 维持该裁决。请将 db-console 作为独立进程部署在应用旁（可执行 JAR / Docker / 离线包），浏览器或 HTTP API 访问其配置的业务数据库。
